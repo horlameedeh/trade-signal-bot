@@ -1,0 +1,290 @@
+from __future__ import annotations
+
+import hashlib
+import json
+from dataclasses import asdict
+from decimal import Decimal, InvalidOperation
+from typing import Optional
+
+from sqlalchemy import text
+
+from app.db.session import SessionLocal
+from app.parsing.models import MessageType, ParsedSignal
+
+
+def _to_decimal_or_none(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    try:
+        return str(Decimal(str(value).replace(",", "")))
+    except (InvalidOperation, ValueError):
+        return None
+
+
+def _to_decimal_array(values: list[str]) -> list[str]:
+    out: list[str] = []
+    for v in values:
+        d = _to_decimal_or_none(v)
+        if d is not None:
+            out.append(d)
+    return out
+
+
+def _risk_tag_from_flags(flags: list[str]) -> str:
+    flags_set = set(flags or [])
+    # Your DB enum only has: unknown, normal, half, tiny, high
+    if "HALF_OF_HALF" in flags_set:
+        return "half"
+    if "HALF_RISK" in flags_set or "HALF_SIZE" in flags_set:
+        return "half"
+    if "HIGH_RISK" in flags_set:
+        return "high"
+    if "TINY_RISK" in flags_set:
+        return "tiny"
+    if "NORMAL_RISK" in flags_set:
+        return "normal"
+    return "unknown"
+
+
+def _dedupe_hash(provider_code: str, source_msg_pk: str, clean_text: str) -> str:
+    raw = f"{provider_code}|{source_msg_pk}|{clean_text}".encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()
+
+
+def _load_message_context(db, source_msg_pk: str) -> tuple[int, int]:
+    row = db.execute(
+        text(
+            """
+            SELECT chat_id, message_id
+            FROM telegram_messages
+            WHERE msg_pk = CAST(:pk AS uuid)
+            """
+        ),
+        {"pk": source_msg_pk},
+    ).mappings().first()
+
+    if not row:
+        raise ValueError(f"telegram_messages row not found for msg_pk={source_msg_pk}")
+
+    return int(row["chat_id"]), int(row["message_id"])
+
+
+def persist_parsed_signal(
+    *,
+    source_msg_pk: str,
+    provider_code: str,
+    broker_account_id: Optional[str],
+    parsed: ParsedSignal,
+) -> None:
+    payload = asdict(parsed)
+    payload_json = json.dumps(payload, default=str)
+
+    with SessionLocal() as db:
+        chat_id, source_message_id = _load_message_context(db, source_msg_pk)
+
+        if parsed.message_type == MessageType.NEW_TRADE:
+            _persist_trade_intent(
+                db=db,
+                source_msg_pk=source_msg_pk,
+                source_message_id=source_message_id,
+                chat_id=chat_id,
+                provider_code=provider_code,
+                parsed=parsed,
+                payload_json=payload_json,
+            )
+        elif parsed.message_type == MessageType.UPDATE:
+            _persist_trade_update(
+                db=db,
+                source_msg_pk=source_msg_pk,
+                chat_id=chat_id,
+                provider_code=provider_code,
+                parsed=parsed,
+                payload_json=payload_json,
+            )
+
+        db.commit()
+
+
+def _persist_trade_intent(
+    *,
+    db,
+    source_msg_pk: str,
+    source_message_id: int,
+    chat_id: int,
+    provider_code: str,
+    parsed: ParsedSignal,
+    payload_json: str,
+) -> None:
+    entry_price = _to_decimal_or_none(parsed.entry)
+    sl_price = _to_decimal_or_none(parsed.sl)
+    tp_prices = _to_decimal_array(parsed.tps)
+
+    parse_confidence = Decimal(parsed.confidence) / Decimal(100)
+
+    risk_tag = _risk_tag_from_flags(parsed.flags)
+    dedupe = _dedupe_hash(provider_code, source_msg_pk, parsed.clean_text)
+
+    side = parsed.side.value.lower() if parsed.side else None
+    order_type = parsed.order_type.value if parsed.order_type else None
+    instructions = parsed.clean_text
+
+    meta = json.loads(payload_json)
+    meta["be_at_tp1"] = True
+
+    db.execute(
+        text(
+            """
+            INSERT INTO trade_intents (
+              provider,
+              chat_id,
+              source_msg_pk,
+              source_message_id,
+              dedupe_hash,
+              parse_confidence,
+              symbol_canonical,
+              symbol_raw,
+              side,
+              order_type,
+              entry_price,
+              sl_price,
+              tp_prices,
+              has_runner,
+              risk_tag,
+              is_scalp,
+              is_swing,
+              is_unofficial,
+              reenter_tag,
+              instructions,
+              meta
+            )
+            VALUES (
+              :provider,
+              :chat_id,
+              CAST(:source_msg_pk AS uuid),
+              :source_message_id,
+              :dedupe_hash,
+              :parse_confidence,
+              :symbol_canonical,
+              :symbol_raw,
+              :side,
+              :order_type,
+              :entry_price,
+              :sl_price,
+              CAST(:tp_prices AS numeric(18,10)[]),
+              :has_runner,
+              :risk_tag,
+              :is_scalp,
+              :is_swing,
+              :is_unofficial,
+              :reenter_tag,
+              :instructions,
+              CAST(:meta AS jsonb)
+            )
+            ON CONFLICT (source_msg_pk) DO NOTHING;
+            """
+        ),
+        {
+            "provider": provider_code,
+            "chat_id": chat_id,
+            "source_msg_pk": source_msg_pk,
+            "source_message_id": source_message_id,
+            "dedupe_hash": dedupe,
+            "parse_confidence": parse_confidence,
+            "symbol_canonical": parsed.symbol,
+            "symbol_raw": parsed.raw_symbol,
+            "side": side,
+            "order_type": order_type,
+            "entry_price": entry_price,
+            "sl_price": sl_price,
+            "tp_prices": tp_prices if tp_prices else None,
+            "has_runner": any("runner" in x.lower() for x in parsed.tps),
+            "risk_tag": risk_tag,
+            "is_scalp": "SCALP" in set(parsed.flags),
+            "is_swing": "SWING" in set(parsed.flags),
+            "is_unofficial": parsed.unofficial,
+            "reenter_tag": "REENTER" in set(parsed.flags),
+            "instructions": instructions,
+            "meta": json.dumps(meta, default=str),
+        },
+    )
+
+
+def _update_kind(parsed: ParsedSignal) -> str:
+    upd = parsed.update
+    if not upd:
+        return "set_sl_tp"
+
+    if "REENTER" in set(parsed.flags):
+        return "reenter"
+    if upd.close_all:
+        return "close_all"
+    if upd.close_partial:
+        return "close_partial"
+    if upd.move_sl_to_entry or upd.move_sl_to_be:
+        return "move_sl_to_entry"
+    if upd.move_tp_to_price or upd.add_tps:
+        return "move_tp"
+    # explicit price-based SL changes and general modifications fall back here
+    return "set_sl_tp"
+
+
+def _persist_trade_update(
+    *,
+    db,
+    source_msg_pk: str,
+    chat_id: int,
+    provider_code: str,
+    parsed: ParsedSignal,
+    payload_json: str,
+) -> None:
+    upd = parsed.update
+    if not upd:
+        return
+
+    new_sl_price = _to_decimal_or_none(upd.move_sl_to_price)
+
+    tp_candidates = list(upd.move_tp_to_price.values()) + list(upd.add_tps)
+    new_tp_prices = _to_decimal_array(tp_candidates)
+
+    meta = json.loads(payload_json)
+
+    db.execute(
+        text(
+            """
+            INSERT INTO trade_updates (
+              provider,
+              chat_id,
+              source_msg_pk,
+              kind,
+              symbol_canonical,
+              new_sl_price,
+              new_tp_prices,
+              instruction_text,
+              meta
+            )
+            VALUES (
+              :provider,
+              :chat_id,
+              CAST(:source_msg_pk AS uuid),
+              :kind,
+              :symbol_canonical,
+              :new_sl_price,
+              CAST(:new_tp_prices AS numeric(18,10)[]),
+              :instruction_text,
+              CAST(:meta AS jsonb)
+            )
+            ON CONFLICT (source_msg_pk) DO NOTHING;
+            """
+        ),
+        {
+            "provider": provider_code,
+            "chat_id": chat_id,
+            "source_msg_pk": source_msg_pk,
+            "kind": _update_kind(parsed),
+            "symbol_canonical": upd.symbol,
+            "new_sl_price": new_sl_price,
+            "new_tp_prices": new_tp_prices if new_tp_prices else None,
+            "instruction_text": parsed.clean_text,
+            "meta": json.dumps(meta, default=str),
+        },
+    )

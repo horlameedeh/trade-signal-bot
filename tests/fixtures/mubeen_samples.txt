@@ -1,0 +1,80 @@
+=== CASE: mub_limit_tp4_split
+XAUUSD BUY LIMIT
+Enter 4946
+SL 4938
+TP1 4950
+TP2 4953
+TP3 4956
+TP4 4970 4985
+
+=== CASE: mub_stub_gold_multiline
+Buy gold now 
+4821
+
+=== CASE: mub_high_risk
+High risk
+
+XAUUSD BUY NOW
+Enter 4603
+SL 4597
+TP1 4606
+TP2 4610
+TP3 4613
+TP4 4626
+
+=== CASE: mub_reenter_tiny
+Re enter with tiny risk
+
+XAUUSD BUY NOW
+Enter 4603
+SL 4597
+TP1 4606
+TP2 4610
+TP3 4613
+TP4 4626
+
+=== CASE: mub_half_risk_sell_limit
+Half risk 
+
+XAUUSD SELL LIMIT
+Enter 4625
+SL 4632
+TP1 4621
+TP2 4615
+TP3 4610
+TP4 4595
+TP5 4545 
+
+If she comes fine otherwise that's a wrap
+
+=== CASE: mub_unlabeled_tps
+Dj30 buy now
+Enter 49500
+Sl 49400
+
+TPs
+
+49540
+49570
+49600
+49650
+
+=== CASE: mub_scalp_checked_sl
+Scalp Half risk
+
+XAUUSD SELL NOW
+Enter 4464
+SL 4469 (50)
+TP1 4460 ✅
+TP2 4457
+TP3 4454
+TP4 4450
+
+=== CASE: mub_btcusdt_commas
+BTCUSDT BUY NOW
+Enter 91800
+SL 90800 (100)
+TP1 93200
+TP2 95700
+TP3 98200
+TP4 100,700 (890)

@@ -1,0 +1,95 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Optional
+
+from sqlalchemy import text
+
+
+@dataclass(frozen=True)
+class AdminCommandResult:
+    handled: bool
+    reply_html: Optional[str] = None
+
+
+def _parse_int(s: str) -> int:
+    s = s.strip()
+    # allow underscores just in case
+    s = s.replace("_", "")
+    return int(s)
+
+
+def _normalize_provider(provider: str) -> str:
+    return provider.strip().lower()
+
+
+def handle_admin_command(db, text_msg: str) -> str | None:
+    """
+    Handle control-chat admin commands.
+
+    Supported:
+      - !addchannel <provider> <channel_id>
+      - !removechannel <provider> <channel_id>
+
+    Returns:
+      HTML string reply if handled, else None.
+    """
+    msg = (text_msg or "").strip()
+    if not msg.startswith("!"):
+        return None
+
+    parts = msg.split()
+    cmd = parts[0].lower()
+
+    if cmd not in {"!addchannel", "!removechannel"}:
+        return None
+
+    if len(parts) != 3:
+        usage = (
+            "<b>Usage</b>\n"
+            "<code>!addchannel &lt;provider&gt; &lt;channel_id&gt;</code>\n"
+            "<code>!removechannel &lt;provider&gt; &lt;channel_id&gt;</code>"
+        )
+        return usage
+
+    provider_code = _normalize_provider(parts[1])
+    chat_id = _parse_int(parts[2])
+
+    # Ensure chat row exists, then set/unset provider_code
+    if cmd == "!addchannel":
+        db.execute(
+            text(
+                """
+                INSERT INTO telegram_chats (chat_id, provider_code, updated_at)
+                VALUES (:chat_id, :provider_code, now())
+                ON CONFLICT (chat_id) DO UPDATE
+                  SET provider_code = EXCLUDED.provider_code,
+                      updated_at = now();
+                """
+            ),
+            {"chat_id": chat_id, "provider_code": provider_code},
+        )
+        return (
+            "✅ <b>Channel mapped</b>\n"
+            f"• provider: <code>{provider_code}</code>\n"
+            f"• chat_id: <code>{chat_id}</code>"
+        )
+
+    # !removechannel
+    db.execute(
+        text(
+            """
+            UPDATE telegram_chats
+            SET provider_code = NULL,
+                updated_at = now()
+            WHERE chat_id = :chat_id;
+            """
+        ),
+        {"chat_id": chat_id},
+    )
+    return (
+        "✅ <b>Channel unmapped</b>\n"
+        f"• provider: <code>{provider_code}</code>\n"
+        f"• chat_id: <code>{chat_id}</code>\n"
+        "<i>Note:</i> provider argument is accepted for readability; mapping is removed by chat_id."
+    )

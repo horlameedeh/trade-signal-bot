@@ -1,0 +1,24 @@
+=== CASE: bc_sell_xau
+🚨 SELL XAUUSD
+
+📈ENTRY: 4950
+
+🔴SL: 4956
+
+🟢TP1: 4947
+🟢TP2: 4944
+🟢TP3: 4938
+
+=== CASE: bc_buy_eurusd
+🚨 BUY EURUSD
+
+📈ENTRY: 1.16318
+
+🔴SL: 1.16166
+
+🟢TP1: 1.16470
+🟢TP2: 1.16625
+🟢TP3: 1.16818
+
+=== CASE: bc_update_be
+🚨Position is running nicely! I will Move stop loss to break even!

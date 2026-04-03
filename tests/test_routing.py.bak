@@ -1,0 +1,98 @@
+import os
+import uuid
+
+import pytest
+from sqlalchemy import text
+
+from app.db.session import SessionLocal
+from app.routing.repository import RoutingRepository
+from app.routing.router import Router
+
+
+class FakeTG:
+    def __init__(self):
+        self.sent: list[tuple[int, str]] = []
+
+    async def send_message(self, chat_id: int, text: str):
+        self.sent.append((chat_id, text))
+
+
+@pytest.fixture
+def control_chat_id() -> int:
+    v = os.getenv("TEST_CONTROL_CHAT_ID")
+    return int(v) if v else -100999
+
+
+@pytest.fixture
+def db_session():
+    with SessionLocal() as db:
+        trans = db.begin()
+        try:
+            yield db
+        finally:
+            trans.rollback()
+
+
+def _seed_broker_account(db_session, *, broker: str, platform: str = "mt5", label: str = "test") -> str:
+    """Insert a broker_accounts row and return its UUID account_id."""
+
+    account_id = str(uuid.uuid4())
+
+    db_session.execute(
+        text(
+            """
+            INSERT INTO broker_accounts (account_id, broker, platform, kind, label, allowed_providers)
+            VALUES (:account_id, :broker, :platform, 'personal_live', :label, ARRAY['fredtrading']::provider_code[])
+            """
+        ),
+        {
+            "account_id": account_id,
+            "broker": broker,
+            "platform": platform,
+            "label": f"{label}-{broker}",
+        },
+    )
+    return account_id
+
+
+@pytest.mark.asyncio
+async def test_mapped_channel_routes_correctly(db_session, control_chat_id):
+    tg = FakeTG()
+    repo = RoutingRepository(db_session)
+
+    repo.set_chat_provider(chat_id=111, provider_code="fredtrading")
+
+    ftmo_account_id = _seed_broker_account(db_session, broker="FTMO")
+    repo.upsert_provider_account_route(provider_code="fredtrading", broker_account_id=ftmo_account_id)
+    db_session.commit()
+
+    router = Router(db_session, tg_client=tg, control_chat_id=control_chat_id)
+    decision = await router.route_message(chat_id=111, telegram_message_id=555, raw_meta={"x": 1})
+
+    assert decision is not None
+    assert decision.provider_code == "fredtrading"
+    assert decision.broker_account_id == ftmo_account_id
+    assert tg.sent == []
+
+
+@pytest.mark.asyncio
+async def test_unmapped_channel_alerts_and_ignores(db_session, control_chat_id):
+    tg = FakeTG()
+    router = Router(db_session, tg_client=tg, control_chat_id=control_chat_id)
+
+    decision = await router.route_message(chat_id=999, telegram_message_id=1, raw_meta={})
+    assert decision is None
+    assert len(tg.sent) == 1
+    assert "Unknown chat_id 999" in tg.sent[0][1]
+
+
+@pytest.mark.asyncio
+async def test_provider_constraint_enforced(db_session):
+    repo = RoutingRepository(db_session)
+
+    traderscale_account_id = _seed_broker_account(db_session, broker="Traderscale")
+
+    with pytest.raises(ValueError) as e:
+        repo.upsert_provider_account_route("fredtrading", broker_account_id=traderscale_account_id)
+
+    assert "Constraint violation" in str(e.value)

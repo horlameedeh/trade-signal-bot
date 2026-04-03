@@ -1,0 +1,82 @@
+=== CASE: fred_half_risk_dj30
+buy dj30
+Entry  48720
+SL 48620
+TP1 48750
+TP2 48800
+TP3 48920
+
+HALF RISK
+
+=== CASE: fred_unofficial_gold
+If you want to trade NFP… here’s for you. I am not. Not.
+
+XAUUSD Buy now
+Enter 4812
+SL 4785
+TP1 4817
+TP2 4822
+TP3 4830
+TP4 4870
+
+It’s for you to enjoy or destroy. Your choice.
+
+=== CASE: fred_half_size_btc_limit
+HALF SIZE
+
+BTCUSD Short
+
+Entry (sell limit): 93150
+SL: 93899
+TP1: 92891
+TP2: 92643
+TP3: 92307
+TP4: 91939
+
+=== CASE: fred_scalp_runner
+HALF SIZE
+
+BTCUSD Scalp Short
+
+Entry (sell limit): 90933
+SL: 91499
+TP1: 90696
+TP2: 90567
+TP3: 90445
+TP4: runner
+
+=== CASE: fred_stub_gold
+Buy gold now 29
+
+=== CASE: fred_update_sl_to_entry
+EurUSD Buy Stop
+Enter 1.7920
+SL 1.16820
+TP1 1.18220
+TP2 1.18620
+TP3 1.19120
+TP4 1.19920
+
+SL to entry at TP1
+
+I’m sending this as my triggers have hit.
+Personally I won’t be entering this as it’s late in the year and I won’t be here after Jan 1st to monitor with you. It’s there for those who want to match it to their analysis.
+
+=== CASE: fred_swing_unofficial
+YVM is entering a personal swing trade here on Gold
+
+Entering 4450
+SL 4250
+
+TP 4470
+TP 4550
+TP 4650
+TP 4830
+
+I do not recommend this trade and certainly not for small accounts (under 15k)
+
+Take it as you will. Enjoy life. No speaking of it.
+Life changing or ending, your call.
+
+=== CASE: fred_move_tp4s
+Move TP4s to 4527

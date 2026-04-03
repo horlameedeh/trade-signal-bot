@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: tradebot
+      POSTGRES_PASSWORD: tradebot_password
+      POSTGRES_DB: tradebot
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tradebot -d tradebot"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    volumes:
+      - tradebot_pgdata:/var/lib/postgresql/data
+
+volumes:
+  tradebot_pgdata:
