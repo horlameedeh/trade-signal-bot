@@ -40,7 +40,7 @@ def main() -> int:
         sl_price=args.sl,
         tp_price=args.tp,
         magic=999001,
-        comment=f"tb_smoke_{leg_id[:8]}",
+        comment=f"tradebot-smoke:{family_id}:{leg_id}",
     )
 
     # Pre-flight: check node health before attempting order

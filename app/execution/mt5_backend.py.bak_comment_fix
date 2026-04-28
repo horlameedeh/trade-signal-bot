@@ -5,24 +5,11 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-import re
-
 from app.execution.node_contract import (
     ActionResultModel,
     OpenLegReceiptModel,
     OpenPositionModel,
 )
-
-
-def _safe_mt5_comment(value: str, *, max_len: int = 28) -> str:
-    """
-    MT5 comments are broker-sensitive. Keep them short and ASCII-safe.
-    """
-    cleaned = re.sub(r"[^A-Za-z0-9_]", "_", value or "tradebot")
-    cleaned = re.sub(r"_+", "_", cleaned).strip("_")
-    if not cleaned:
-        cleaned = "tradebot"
-    return cleaned[:max_len]
 
 
 @dataclass(frozen=True)
