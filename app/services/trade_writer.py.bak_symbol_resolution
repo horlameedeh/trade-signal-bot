@@ -7,9 +7,7 @@ from typing import Optional
 from sqlalchemy import text
 
 from app.db.session import SessionLocal
-from app.execution.entry_policy import EntryPolicyInput, build_entry_plan
 from app.risk.lot_sizing import LotSizingInput, resolve_lot_sizing
-from app.services.symbol_aliases import resolve_broker_symbol
 
 
 @dataclass(frozen=True)
@@ -59,14 +57,14 @@ def _infer_special_rule(row) -> str | None:
     return None
 
 
-def _resolve_account_context(db, account_id: str | None) -> tuple[str, int, str]:
+def _resolve_account_context(db, account_id: str | None) -> tuple[str, int]:
     if not account_id:
         raise RuntimeError("trade_plan.account_id missing for lot sizing")
 
     acc = db.execute(
         text(
             """
-            SELECT broker, platform, equity_start
+            SELECT broker, equity_start
             FROM broker_accounts
             WHERE account_id = CAST(:account_id AS uuid)
             LIMIT 1
@@ -79,7 +77,6 @@ def _resolve_account_context(db, account_id: str | None) -> tuple[str, int, str]
         raise RuntimeError(f"broker_account not found: {account_id}")
 
     broker = str(acc["broker"])
-    platform = str(acc["platform"])
     equity_start = acc["equity_start"]
     if equity_start is None:
         raise RuntimeError(f"broker_account.equity_start missing for account_id={account_id}")
@@ -98,7 +95,7 @@ def _resolve_account_context(db, account_id: str | None) -> tuple[str, int, str]
     else:
         raise RuntimeError(f"Unsupported broker for lot sizing policy: {broker}")
 
-    return account_type, account_size, platform
+    return account_type, account_size
 
 
 def create_trade_family_and_legs(
@@ -119,7 +116,6 @@ def create_trade_family_and_legs(
                   ti.source_msg_pk::text AS source_msg_pk,
                   ti.symbol_canonical,
                   ti.side::text AS side,
-                  ti.order_type::text AS order_type,
                   ti.entry_price::text AS entry_price,
                   ti.sl_price::text AS sl_price,
                   ti.tp_prices,
@@ -175,23 +171,9 @@ def create_trade_family_and_legs(
             tp_count = 1
 
         if total_lot is None:
-            account_type, account_size, platform = _resolve_account_context(db, row["account_id"])
+            account_type, account_size = _resolve_account_context(db, row["account_id"])
             modifiers = _infer_modifiers(row)
             special_rule = _infer_special_rule(row)
-
-            symbol_result = resolve_broker_symbol(
-                canonical_symbol=row["symbol_canonical"],
-                broker=account_type if account_type != "live" else str(db.execute(
-                    text("SELECT broker FROM broker_accounts WHERE account_id = CAST(:account_id AS uuid)"),
-                    {"account_id": row["account_id"]},
-                ).scalar()),
-                platform=platform,
-            )
-            if symbol_result.blocked:
-                raise RuntimeError(
-                    f"Symbol mapping blocked trade creation: {symbol_result.reason} "
-                    f"(symbol={row['symbol_canonical']}, broker={symbol_result.broker}, platform={symbol_result.platform})"
-                )
 
             sizing = resolve_lot_sizing(
                 LotSizingInput(
@@ -226,7 +208,6 @@ def create_trade_family_and_legs(
                   chat_id,
                   source_msg_pk,
                   symbol_canonical,
-                  broker_symbol,
                   side,
                   entry_price,
                   sl_price,
@@ -244,7 +225,6 @@ def create_trade_family_and_legs(
                   :chat_id,
                                     CAST(:source_msg_pk AS uuid),
                   :symbol_canonical,
-                                    :broker_symbol,
                   :side,
                   :entry_price,
                   :sl_price,
@@ -265,7 +245,6 @@ def create_trade_family_and_legs(
                 "chat_id": row["chat_id"],
                 "source_msg_pk": row["source_msg_pk"],
                 "symbol_canonical": row["symbol_canonical"],
-                "broker_symbol": symbol_result.resolved_symbol if total_lot is None else row["symbol_canonical"],
                 "side": row["side"],
                 "entry_price": row["entry_price"],
                 "sl_price": row["sl_price"],
@@ -279,19 +258,8 @@ def create_trade_family_and_legs(
         family_id = family_row["family_id"]
 
         tps = list(row["tp_prices"]) if row["tp_prices"] else [None]
-        entry_plan = build_entry_plan(
-            EntryPolicyInput(
-                symbol=str(row["symbol_canonical"]),
-                side=str(row["side"]),
-                order_type=str(row["order_type"] or "market"),
-                entry_price=str(row["entry_price"]),
-                legs_count=len(tps),
-            )
-        )
 
         for idx, tp in enumerate(tps, start=1):
-            requested_entry = entry_plan.requested_entries[idx - 1]
-            placement_delay_ms = entry_plan.market_delays_ms[idx - 1]
             db.execute(
                 text(
                     """
@@ -301,12 +269,10 @@ def create_trade_family_and_legs(
                                             idx,
                       leg_index,
                       entry_price,
-                      requested_entry,
                       sl_price,
                       tp_price,
                       state,
-                      lots,
-                      placement_delay_ms
+                      lots
                     )
                     VALUES (
                                             CAST(:family_id AS uuid),
@@ -314,12 +280,10 @@ def create_trade_family_and_legs(
                                             :idx,
                       :leg_index,
                       :entry_price,
-                      :requested_entry,
                       :sl_price,
                       :tp_price,
                       'OPEN',
-                      :lots,
-                      :placement_delay_ms
+                      :lots
                     )
                     """
                 ),
@@ -329,11 +293,9 @@ def create_trade_family_and_legs(
                     "idx": idx,
                     "leg_index": idx,
                     "entry_price": row["entry_price"],
-                    "requested_entry": requested_entry,
                     "sl_price": row["sl_price"],
                     "tp_price": tp,
                     "lots": lot_per_leg,
-                    "placement_delay_ms": placement_delay_ms,
                 },
             )
 

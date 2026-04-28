@@ -5,7 +5,7 @@ import pytest
 from sqlalchemy import text
 
 from app.db.session import SessionLocal
-from app.services.trade_writer import LotRoundingConfig, create_trade_family_and_legs
+from app.services.trade_writer import create_trade_family_and_legs
 
 
 pytestmark = pytest.mark.integration
@@ -185,7 +185,6 @@ def test_even_split_across_legs(db_session):
     result = create_trade_family_and_legs(
         source_msg_pk=source_msg_pk,
         total_lot="0.30",
-        rounding_cfg=LotRoundingConfig(),
     )
 
     assert result.lot_per_leg == "0.10"

@@ -1,0 +1,193 @@
+providers:
+  fredtrading:
+    default_split: even
+    tiers:
+      live:
+        "1000":
+          normal:
+            total_lots: 0.08
+          swing:
+            total_lots: 0.08
+          special_trying_something_out:
+            total_lots: 0.08
+
+      ftmo:
+        "10000":
+          normal:
+            total_lots: 0.20
+          swing:
+            total_lots: 0.08
+          special_trying_something_out:
+            total_lots: 0.20
+
+        "20000":
+          normal:
+            total_lots: 0.40
+          swing:
+            total_lots: 0.08
+          special_trying_something_out:
+            total_lots: 0.40
+
+        "35000":
+          normal:
+            total_lots: 0.60
+          swing:
+            total_lots: 0.12
+          special_trying_something_out:
+            total_lots: 0.60
+
+        "100000":
+          normal:
+            total_lots: 1.20
+          swing:
+            total_lots: 0.16
+          special_trying_something_out:
+            total_lots: 0.80
+
+        "200000":
+          normal:
+            total_lots: 1.60
+          swing:
+            total_lots: 0.24
+          special_trying_something_out:
+            total_lots: 1.60
+
+        "400000":
+          normal:
+            total_lots: 2.00
+          swing:
+            total_lots: 0.32
+          special_trying_something_out:
+            total_lots: 2.00
+
+  billionaire_club:
+    default_split: even
+    tiers:
+      live:
+        "1000":
+          normal:
+            total_lots: 0.08
+          swing:
+            total_lots: 0.08
+          special_trying_something_out:
+            total_lots: 0.08
+
+      traderscale:
+        "10000":
+          normal:
+            total_lots: 0.20
+          swing:
+            total_lots: 0.08
+          special_trying_something_out:
+            total_lots: 0.20
+
+        "20000":
+          normal:
+            total_lots: 0.40
+          swing:
+            total_lots: 0.08
+          special_trying_something_out:
+            total_lots: 0.40
+
+        "35000":
+          normal:
+            total_lots: 0.60
+          swing:
+            total_lots: 0.12
+          special_trying_something_out:
+            total_lots: 0.60
+
+        "100000":
+          normal:
+            total_lots: 1.20
+          swing:
+            total_lots: 0.16
+          special_trying_something_out:
+            total_lots: 0.80
+
+        "200000":
+          normal:
+            total_lots: 1.60
+          swing:
+            total_lots: 0.24
+          special_trying_something_out:
+            total_lots: 1.60
+
+        "400000":
+          normal:
+            total_lots: 2.00
+          swing:
+            total_lots: 0.32
+          special_trying_something_out:
+            total_lots: 2.00
+
+  mubeen:
+    default_split: even
+    tiers:
+      live:
+        "1000":
+          normal:
+            total_lots: 0.08
+          swing:
+            total_lots: 0.08
+          special_trying_something_out:
+            total_lots: 0.08
+
+      fundednext:
+        "10000":
+          normal:
+            total_lots: 0.20
+          swing:
+            total_lots: 0.08
+          special_trying_something_out:
+            total_lots: 0.20
+
+        "20000":
+          normal:
+            total_lots: 0.40
+          swing:
+            total_lots: 0.08
+          special_trying_something_out:
+            total_lots: 0.40
+
+        "35000":
+          normal:
+            total_lots: 0.60
+          swing:
+            total_lots: 0.12
+          special_trying_something_out:
+            total_lots: 0.60
+
+        "100000":
+          normal:
+            total_lots: 1.20
+          swing:
+            total_lots: 0.16
+          special_trying_something_out:
+            total_lots: 0.80
+
+        "200000":
+          normal:
+            total_lots: 1.60
+          swing:
+            total_lots: 0.24
+          special_trying_something_out:
+            total_lots: 1.60
+
+        "400000":
+          normal:
+            total_lots: 2.00
+          swing:
+            total_lots: 0.32
+          special_trying_something_out:
+            total_lots: 2.00
+
+modifiers:
+  HALF_RISK: 0.50
+  HALF_SIZE: 0.50
+  HALF_OF_HALF: 0.25
+  TINY_RISK: 0.25
+
+defaults:
+  min_lot: 0.01
+  lot_step: 0.01

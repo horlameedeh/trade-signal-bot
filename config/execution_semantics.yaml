@@ -1,0 +1,46 @@
+instrument_classes:
+  metals:
+    entry_jitter_points:
+      min: 1
+      max: 5
+    market_delay_ms:
+      min: 150
+      max: 500
+
+  indices:
+    entry_jitter_points:
+      min: 5
+      max: 20
+    market_delay_ms:
+      min: 200
+      max: 700
+
+  crypto:
+    entry_jitter_points:
+      min: 20
+      max: 100
+    market_delay_ms:
+      min: 250
+      max: 900
+
+  fx:
+    entry_jitter_points:
+      min: 1
+      max: 3
+    market_delay_ms:
+      min: 100
+      max: 300
+
+symbol_class_overrides:
+  XAUUSD: metals
+  XAGUSD: metals
+  DJ30: indices
+  NAS100: indices
+  BTCUSD: crypto
+  EURUSD: fx
+  GBPUSD: fx
+  USDJPY: fx
+  USDCAD: fx
+  EURJPY: fx
+  GBPCAD: fx
+  GBPNZD: fx
