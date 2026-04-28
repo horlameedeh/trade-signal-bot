@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import requests
 
 from app.execution.base import ExecutionAdapter, OrderLegReceipt, OrderLegRequest
@@ -12,8 +13,18 @@ class HttpExecutionNode(ExecutionAdapter):
 
     def open_legs(self, legs: list[OrderLegRequest]) -> list[OrderLegReceipt]:
         payload = {"legs": [leg.__dict__ for leg in legs]}
-        r = requests.post(f"{self.base_url}/open-legs", json=payload, timeout=self.timeout)
-        r.raise_for_status()
+        url = f"{self.base_url}/open-legs"
+        
+        try:
+            r = requests.post(url, json=payload, timeout=self.timeout)
+            r.raise_for_status()
+        except requests.exceptions.HTTPError as e:
+            print(f"[DEBUG] POST {url}")
+            print(f"[DEBUG] Payload: {json.dumps(payload, indent=2)}")
+            print(f"[DEBUG] Status: {e.response.status_code}")
+            print(f"[DEBUG] Response: {e.response.text}")
+            raise
+        
         data = r.json()
 
         return [

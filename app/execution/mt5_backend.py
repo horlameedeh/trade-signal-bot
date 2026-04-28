@@ -99,6 +99,12 @@ class Mt5Backend:
         else:
             price = float(leg.requested_entry)
 
+        # MT5 comment field only allows alphanumeric characters, spaces, hyphens,
+        # underscores, and dots — colons and other punctuation are rejected with
+        # error -2 ("Invalid comment argument"). Sanitize before sending.
+        import re as _re
+        safe_comment = _re.sub(r"[^A-Za-z0-9 _./-]", "_", leg.comment)[:31]
+
         request = {
             "action": action,
             "symbol": leg.broker_symbol,
@@ -109,7 +115,7 @@ class Mt5Backend:
             "tp": float(leg.tp_price) if leg.tp_price is not None else 0.0,
             "deviation": self.config.deviation,
             "magic": int(leg.magic),
-            "comment": leg.comment[:31],
+            "comment": safe_comment,
             "type_time": self.mt5.ORDER_TIME_GTC,
             "type_filling": self.mt5.ORDER_FILLING_IOC,
         }

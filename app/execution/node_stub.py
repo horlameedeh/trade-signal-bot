@@ -50,6 +50,7 @@ def health() -> NodeHealthResponse:
                 detail=f"account={h.get('account_login')} server={h.get('server')}",
             )
         except Exception as e:
+            import traceback
             return NodeHealthResponse(
                 ok=False,
                 node_name=NODE_NAME,
@@ -57,7 +58,7 @@ def health() -> NodeHealthResponse:
                 broker=BROKER,
                 terminal_connected=False,
                 trading_enabled=False,
-                detail=str(e),
+                detail=f"{type(e).__name__}: {str(e)}",
             )
 
     return NodeHealthResponse(
@@ -79,7 +80,9 @@ def open_legs(req: OpenLegsRequest) -> OpenLegsResponse:
             receipts = [backend.open_leg(leg) for leg in req.legs]
             return OpenLegsResponse(receipts=receipts)
         except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
+            import traceback
+            error_detail = f"{type(e).__name__}: {str(e)}\n{traceback.format_exc()}"
+            raise HTTPException(status_code=500, detail=error_detail)
 
     receipts: list[OpenLegReceiptModel] = []
 
@@ -158,6 +161,8 @@ def open_positions() -> OpenPositionsResponse:
             backend = _mt5_backend()
             return OpenPositionsResponse(positions=backend.open_positions())
         except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
+            import traceback
+            error_detail = f"{type(e).__name__}: {str(e)}\n{traceback.format_exc()}"
+            raise HTTPException(status_code=500, detail=error_detail)
 
     return OpenPositionsResponse(positions=list(_positions.values()))
