@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -72,6 +73,12 @@ class Mt5Backend:
     def _trade_action(self, order_type: str) -> int:
         return self.mt5.TRADE_ACTION_DEAL if order_type.lower() == "market" else self.mt5.TRADE_ACTION_PENDING
 
+    @staticmethod
+    def _sanitize_comment(comment: str) -> str:
+        """MT5 rejects comments with characters outside [A-Za-z0-9 _./-].
+        Replace disallowed chars with '-' and truncate to 31 characters."""
+        return re.sub(r"[^A-Za-z0-9 _./-]", "-", comment)[:31]
+
     def open_leg(self, leg) -> OpenLegReceiptModel:
         if not self.config.live_enabled:
             raise RuntimeError("MT5 live trading is disabled. Set TRADEBOT_LIVE_TRADING_ENABLED=true to enable.")
@@ -99,11 +106,7 @@ class Mt5Backend:
         else:
             price = float(leg.requested_entry)
 
-        # MT5 comment field only allows alphanumeric characters, spaces, hyphens,
-        # underscores, and dots — colons and other punctuation are rejected with
-        # error -2 ("Invalid comment argument"). Sanitize before sending.
-        import re as _re
-        safe_comment = _re.sub(r"[^A-Za-z0-9 _./-]", "_", leg.comment)[:31]
+        safe_comment = self._sanitize_comment(leg.comment)
 
         request = {
             "action": action,
@@ -197,7 +200,7 @@ class Mt5Backend:
             "type": close_type,
             "price": price,
             "deviation": self.config.deviation,
-            "comment": f"tradebot-close:{leg_id}"[:31],
+            "comment": self._sanitize_comment(f"tradebot-close:{leg_id}"),
         }
 
         result = self.mt5.order_send(request)
@@ -224,11 +227,21 @@ class Mt5Backend:
             leg_id = None
             family_id = None
 
+            # Comment format on wire: "tradebot-{family_id}-{leg_id}" (colons
+            # replaced with "-" to satisfy MT5 field constraints), or the
+            # legacy "tradebot:{family_id}:{leg_id}" format on older positions.
             if comment.startswith("tradebot:"):
                 parts = comment.split(":")
                 if len(parts) >= 3:
                     family_id = parts[1]
                     leg_id = parts[2]
+            elif comment.startswith("tradebot-") and comment.count("-") >= 2:
+                # sanitized format: "tradebot-{family_id}-{leg_id}" (truncated)
+                rest = comment[len("tradebot-"):]
+                sep = rest.find("-")
+                if sep != -1:
+                    family_id = rest[:sep]
+                    leg_id = rest[sep + 1:]
 
             side = "buy" if getattr(p, "type", 0) == self.mt5.ORDER_TYPE_BUY else "sell"
 
