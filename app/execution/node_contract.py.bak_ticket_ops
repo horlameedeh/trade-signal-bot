@@ -65,31 +65,6 @@ class ModifySlTpResponse(BaseModel):
     results: list[ActionResultModel]
 
 
-
-class TicketModifyItem(BaseModel):
-    leg_id: str
-    broker_ticket: str
-    broker_symbol: str
-    sl: str | None = None
-    tp: str | None = None
-
-
-class TicketModifyRequest(BaseModel):
-    tickets: list[TicketModifyItem]
-
-
-class TicketCloseItem(BaseModel):
-    leg_id: str
-    broker_ticket: str
-    broker_symbol: str
-    side: Literal["buy", "sell"]
-    lots: str
-
-
-class TicketCloseRequest(BaseModel):
-    tickets: list[TicketCloseItem]
-
-
 class CloseLegsRequest(BaseModel):
     leg_ids: list[str]
 

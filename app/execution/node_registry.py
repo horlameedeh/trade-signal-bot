@@ -34,10 +34,17 @@ def get_active_execution_node(*, broker: str, platform: str) -> ExecutionNodeRec
         ).mappings().first()
 
     if not row:
-        raise RuntimeError(f"No active execution node for broker={broker} platform={platform}")
+        raise RuntimeError(
+            f"No active execution node configured for broker={broker} platform={platform}. "
+            f"Please register an execution node in the execution_nodes table with: "
+            f"broker='{broker}', platform='{platform}', base_url=<node_url>, is_active=true"
+        )
 
     if not row["base_url"]:
-        raise RuntimeError(f"Execution node has no base_url for broker={broker} platform={platform}")
+        raise RuntimeError(
+            f"Execution node '{row['name']}' for broker={broker} platform={platform} "
+            f"has no base_url configured. Please set the base_url in the execution_nodes table."
+        )
 
     return ExecutionNodeRecord(
         node_id=row["node_id"],

@@ -60,22 +60,3 @@ class HttpExecutionNode(ExecutionAdapter):
         r = requests.get(f"{self.base_url}/open-positions", timeout=self.timeout)
         r.raise_for_status()
         return r.json().get("positions", [])
-
-    def modify_ticket_sl_tp(self, tickets: list[dict]) -> list[dict]:
-        r = requests.post(
-            f"{self.base_url}/modify-ticket-sl-tp",
-            json={"tickets": tickets},
-            timeout=self.timeout,
-        )
-        r.raise_for_status()
-        return r.json().get("results", [])
-
-    def close_tickets(self, tickets: list[dict]) -> list[dict]:
-        r = requests.post(
-            f"{self.base_url}/close-tickets",
-            json={"tickets": tickets},
-            timeout=self.timeout,
-        )
-        r.raise_for_status()
-        return r.json().get("results", [])
-

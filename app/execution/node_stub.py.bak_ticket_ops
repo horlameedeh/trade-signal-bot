@@ -9,8 +9,6 @@ from app.execution.node_contract import (
     ActionResultModel,
     CloseLegsRequest,
     CloseLegsResponse,
-    TicketCloseRequest,
-    TicketModifyRequest,
     ModifySlTpRequest,
     ModifySlTpResponse,
     NodeHealthResponse,
@@ -168,62 +166,3 @@ def open_positions() -> OpenPositionsResponse:
             raise HTTPException(status_code=500, detail=error_detail)
 
     return OpenPositionsResponse(positions=list(_positions.values()))
-
-
-@app.post("/modify-ticket-sl-tp", response_model=ModifySlTpResponse)
-def modify_ticket_sl_tp(req: TicketModifyRequest) -> ModifySlTpResponse:
-    if PLATFORM == "mt5":
-        try:
-            backend = _mt5_backend()
-            results = [
-                backend.modify_sl_tp(
-                    leg_id=item.leg_id,
-                    ticket=item.broker_ticket,
-                    symbol=item.broker_symbol,
-                    sl=item.sl,
-                    tp=item.tp,
-                )
-                for item in req.tickets
-            ]
-            return ModifySlTpResponse(results=results)
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
-
-    results: list[ActionResultModel] = []
-    for item in req.tickets:
-        pos = _positions.get(item.leg_id)
-        if not pos:
-            results.append(ActionResultModel(leg_id=item.leg_id, ok=False, status="not_found", detail="position not found"))
-            continue
-        _positions[item.leg_id] = pos.model_copy(update={"sl_price": item.sl, "tp_price": item.tp})
-        results.append(ActionResultModel(leg_id=item.leg_id, ok=True, status="modified", detail="ticket sl/tp modified"))
-    return ModifySlTpResponse(results=results)
-
-
-@app.post("/close-tickets", response_model=CloseLegsResponse)
-def close_tickets(req: TicketCloseRequest) -> CloseLegsResponse:
-    if PLATFORM == "mt5":
-        try:
-            backend = _mt5_backend()
-            results = [
-                backend.close_leg(
-                    leg_id=item.leg_id,
-                    ticket=item.broker_ticket,
-                    symbol=item.broker_symbol,
-                    side=item.side,
-                    lots=item.lots,
-                )
-                for item in req.tickets
-            ]
-            return CloseLegsResponse(results=results)
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
-
-    results: list[ActionResultModel] = []
-    for item in req.tickets:
-        if item.leg_id in _positions:
-            del _positions[item.leg_id]
-            results.append(ActionResultModel(leg_id=item.leg_id, ok=True, status="closed", detail="ticket closed"))
-        else:
-            results.append(ActionResultModel(leg_id=item.leg_id, ok=False, status="not_found", detail="position not found"))
-    return CloseLegsResponse(results=results)
