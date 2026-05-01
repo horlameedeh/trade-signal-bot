@@ -7,7 +7,6 @@ from sqlalchemy import text
 from app.db.session import SessionLocal
 from app.execution.http_node import HttpExecutionNode
 from app.execution.node_registry import get_active_execution_node
-from app.services.alerts import alert_sl_tp_modified, alert_trade_closed
 
 
 @dataclass(frozen=True)
@@ -44,40 +43,6 @@ def _load_ticket_rows(leg_ids: list[str]) -> list[dict]:
         ).mappings().all()
 
     return [dict(r) for r in rows]
-
-
-def _family_context_from_rows(rows: list[dict]) -> dict:
-    if not rows:
-        return {}
-
-    leg_id = rows[0]["leg_id"]
-
-    with SessionLocal() as db:
-        row = db.execute(
-            text(
-                """
-                SELECT
-                  et.family_id::text AS family_id,
-                  et.broker,
-                  et.platform,
-                  et.broker_symbol
-                FROM execution_tickets et
-                WHERE et.leg_id = CAST(:leg_id AS uuid)
-                LIMIT 1
-                """
-            ),
-            {"leg_id": leg_id},
-        ).mappings().first()
-
-    if not row:
-        return {}
-
-    return {
-        "family_id": row["family_id"],
-        "broker": row["broker"],
-        "platform": row["platform"],
-        "symbol": row["broker_symbol"],
-    }
 
 
 def modify_legs_sl_tp_live(*, leg_ids: list[str], sl: str | None, tp: str | None) -> TicketOpResult:
@@ -127,23 +92,6 @@ def modify_legs_sl_tp_live(*, leg_ids: list[str], sl: str | None, tp: str | None
                     },
                 )
         db.commit()
-
-    if ok_count > 0:
-        ctx = _family_context_from_rows(rows)
-        if ctx:
-            alert_sl_tp_modified(
-                family_id=ctx["family_id"],
-                broker=ctx["broker"],
-                platform=ctx["platform"],
-                symbol=ctx["symbol"],
-                data={
-                    "leg_ids": leg_ids,
-                    "sl": sl,
-                    "tp": tp,
-                    "ok": ok_count,
-                    "failed": len(leg_ids) - ok_count,
-                },
-            )
 
     return TicketOpResult(
         requested=len(leg_ids),
@@ -203,21 +151,6 @@ def close_legs_live(*, leg_ids: list[str]) -> TicketOpResult:
                     {"leg_id": r["leg_id"]},
                 )
         db.commit()
-
-    if ok_count > 0:
-        ctx = _family_context_from_rows(rows)
-        if ctx:
-            alert_trade_closed(
-                family_id=ctx["family_id"],
-                broker=ctx["broker"],
-                platform=ctx["platform"],
-                symbol=ctx["symbol"],
-                data={
-                    "leg_ids": leg_ids,
-                    "ok": ok_count,
-                    "failed": len(leg_ids) - ok_count,
-                },
-            )
 
     return TicketOpResult(
         requested=len(leg_ids),

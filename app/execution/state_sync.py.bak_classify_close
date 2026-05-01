@@ -1,0 +1,193 @@
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass
+from datetime import datetime, timezone
+
+from sqlalchemy import text
+
+from app.db.session import SessionLocal
+from app.execution.http_node import HttpExecutionNode
+from app.execution.node_registry import get_active_execution_node
+
+
+@dataclass(frozen=True)
+class StateSyncResult:
+    broker: str
+    platform: str
+    broker_positions_seen: int
+    local_open_tickets_seen: int
+    legs_confirmed_open: int
+    legs_marked_closed: int
+    manual_or_broker_closed: int
+    tickets_updated: int
+
+
+def _positions_by_ticket(positions: list[dict]) -> dict[str, dict]:
+    return {str(p["broker_ticket"]): p for p in positions if p.get("broker_ticket")}
+
+
+def sync_execution_state(*, broker: str, platform: str) -> StateSyncResult:
+    node = get_active_execution_node(broker=broker, platform=platform)
+    adapter = HttpExecutionNode(node.base_url)
+    positions = adapter.query_open_positions()
+    positions_by_ticket = _positions_by_ticket(positions)
+
+    legs_confirmed_open = 0
+    legs_marked_closed = 0
+    manual_or_broker_closed = 0
+    tickets_updated = 0
+
+    with SessionLocal() as db:
+        open_tickets = db.execute(
+            text(
+                """
+                SELECT
+                  et.ticket_id::text AS ticket_id,
+                  et.leg_id::text AS leg_id,
+                  et.family_id::text AS family_id,
+                  et.broker_ticket,
+                  et.broker_symbol,
+                  et.status,
+                  tl.state AS leg_state
+                FROM execution_tickets et
+                JOIN trade_legs tl ON tl.leg_id = et.leg_id
+                WHERE et.broker = :broker
+                  AND et.platform = :platform
+                  AND et.status = 'open'
+                ORDER BY et.created_at ASC
+                """
+            ),
+            {"broker": broker, "platform": platform},
+        ).mappings().all()
+
+        for ticket in open_tickets:
+            broker_ticket = str(ticket["broker_ticket"])
+            pos = positions_by_ticket.get(broker_ticket)
+
+            if pos:
+                legs_confirmed_open += 1
+
+                db.execute(
+                    text(
+                        """
+                        UPDATE execution_tickets
+                        SET actual_fill_price = COALESCE(:open_price, actual_fill_price),
+                            sl_price = NULLIF(:sl_price, '')::numeric,
+                            tp_price = NULLIF(:tp_price, '')::numeric,
+                            lots = NULLIF(:lots, '')::numeric,
+                            raw_response = CAST(raw_response AS jsonb) || CAST(:raw AS jsonb),
+                            updated_at = now()
+                        WHERE ticket_id = CAST(:ticket_id AS uuid)
+                        """
+                    ),
+                    {
+                        "ticket_id": ticket["ticket_id"],
+                        "open_price": pos.get("open_price"),
+                        "sl_price": str(pos.get("sl_price") or ""),
+                        "tp_price": str(pos.get("tp_price") or ""),
+                        "lots": str(pos.get("lots") or ""),
+                        "raw": json.dumps(
+                            {
+                                "state_sync": {
+                                    "seen_open": True,
+                                    "synced_at": datetime.now(timezone.utc).isoformat(),
+                                    "position": pos,
+                                }
+                            },
+                            default=str,
+                        ),
+                    },
+                )
+
+                db.execute(
+                    text(
+                        """
+                        UPDATE trade_legs
+                        SET state = 'OPEN'
+                        WHERE leg_id = CAST(:leg_id AS uuid)
+                          AND state <> 'OPEN'
+                        """
+                    ),
+                    {"leg_id": ticket["leg_id"]},
+                )
+                tickets_updated += 1
+                continue
+
+            # Local ticket says open, broker no longer has it open.
+            # For Milestone 12 Phase 1, classify as CLOSED_UNKNOWN.
+            db.execute(
+                text(
+                    """
+                    UPDATE execution_tickets
+                    SET status = 'closed',
+                        raw_response = CAST(raw_response AS jsonb) || CAST(:raw AS jsonb),
+                        updated_at = now()
+                    WHERE ticket_id = CAST(:ticket_id AS uuid)
+                    """
+                ),
+                {
+                    "ticket_id": ticket["ticket_id"],
+                    "raw": json.dumps(
+                        {
+                            "state_sync": {
+                                "seen_open": False,
+                                "closed_reason": "missing_from_broker_open_positions",
+                                "synced_at": datetime.now(timezone.utc).isoformat(),
+                            }
+                        },
+                        default=str,
+                    ),
+                },
+            )
+
+            db.execute(
+                text(
+                    """
+                    UPDATE trade_legs
+                    SET state = 'CLOSED'
+                    WHERE leg_id = CAST(:leg_id AS uuid)
+                    """
+                ),
+                {"leg_id": ticket["leg_id"]},
+            )
+
+            legs_marked_closed += 1
+            manual_or_broker_closed += 1
+
+        db.commit()
+
+        # Family-level rollup: CLOSED when all legs are closed, PARTIALLY_CLOSED when mixed.
+        db.execute(
+            text(
+                """
+                UPDATE trade_families tf
+                SET state = CASE
+                    WHEN x.closed_count = x.total_count THEN 'CLOSED'
+                    WHEN x.closed_count > 0 THEN 'PARTIALLY_CLOSED'
+                    ELSE tf.state
+                END
+                FROM (
+                    SELECT family_id,
+                           COUNT(*) AS total_count,
+                           COUNT(*) FILTER (WHERE state = 'CLOSED') AS closed_count
+                    FROM trade_legs
+                    GROUP BY family_id
+                ) x
+                WHERE tf.family_id = x.family_id
+                  AND tf.state IN ('OPEN', 'PARTIALLY_CLOSED')
+                """
+            )
+        )
+        db.commit()
+
+    return StateSyncResult(
+        broker=broker,
+        platform=platform,
+        broker_positions_seen=len(positions),
+        local_open_tickets_seen=len(open_tickets),
+        legs_confirmed_open=legs_confirmed_open,
+        legs_marked_closed=legs_marked_closed,
+        manual_or_broker_closed=manual_or_broker_closed,
+        tickets_updated=tickets_updated,
+    )

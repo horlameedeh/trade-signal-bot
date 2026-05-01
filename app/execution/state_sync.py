@@ -1,0 +1,289 @@
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass
+from datetime import datetime, timezone
+
+from sqlalchemy import text
+
+from app.db.session import SessionLocal
+from app.execution.http_node import HttpExecutionNode
+from app.execution.node_registry import get_active_execution_node
+from app.services.lifecycle import recompute_family_lifecycle
+from app.services.management_live import apply_live_be_at_tp1
+from app.services.alerts import alert_trade_closed, alert_reconciliation_mismatch
+
+
+@dataclass(frozen=True)
+class StateSyncResult:
+    broker: str
+    platform: str
+    broker_positions_seen: int
+    local_open_tickets_seen: int
+    legs_confirmed_open: int
+    legs_marked_closed: int
+    manual_or_broker_closed: int
+    tickets_updated: int
+    families_recomputed: int
+    management_actions_applied: int
+
+
+
+def _to_float(value) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _classify_missing_position(*, side: str, last_price, sl_price, tp_price) -> str:
+    """
+    Best-effort closure classification.
+
+    If broker no longer reports a position as open:
+    - BUY:
+      - last/current price >= TP => TP_HIT
+      - last/current price <= SL => SL_HIT
+    - SELL:
+      - last/current price <= TP => TP_HIT
+      - last/current price >= SL => SL_HIT
+    Else CLOSED_MANUAL.
+    """
+    price = _to_float(last_price)
+    sl = _to_float(sl_price)
+    tp = _to_float(tp_price)
+
+    if price is None:
+        return "CLOSED_MANUAL"
+
+    side_l = (side or "").lower()
+
+    if side_l == "buy":
+        if tp and price >= tp:
+            return "TP_HIT"
+        if sl and price <= sl:
+            return "SL_HIT"
+
+    if side_l == "sell":
+        if tp and price <= tp:
+            return "TP_HIT"
+        if sl and price >= sl:
+            return "SL_HIT"
+
+    return "CLOSED_MANUAL"
+
+
+def _positions_by_ticket(positions: list[dict]) -> dict[str, dict]:
+    return {str(p["broker_ticket"]): p for p in positions if p.get("broker_ticket")}
+
+
+def sync_execution_state(*, broker: str, platform: str) -> StateSyncResult:
+    node = get_active_execution_node(broker=broker, platform=platform)
+    adapter = HttpExecutionNode(node.base_url)
+    positions = adapter.query_open_positions()
+    positions_by_ticket = _positions_by_ticket(positions)
+
+    legs_confirmed_open = 0
+    legs_marked_closed = 0
+    manual_or_broker_closed = 0
+    tickets_updated = 0
+    affected_family_ids: set[str] = set()
+
+    broker_position_tickets = set(positions_by_ticket.keys())
+
+    with SessionLocal() as db:
+        open_tickets = db.execute(
+            text(
+                """
+                SELECT
+                  et.ticket_id::text AS ticket_id,
+                  et.leg_id::text AS leg_id,
+                  et.family_id::text AS family_id,
+                  et.broker_ticket,
+                  et.broker_symbol,
+                  et.status,
+                  et.side,
+                  et.actual_fill_price,
+                  et.sl_price,
+                  et.tp_price,
+                  tl.state AS leg_state
+                FROM execution_tickets et
+                JOIN trade_legs tl ON tl.leg_id = et.leg_id
+                WHERE et.broker = :broker
+                  AND et.platform = :platform
+                  AND et.status = 'open'
+                ORDER BY et.created_at ASC
+                """
+            ),
+            {"broker": broker, "platform": platform},
+        ).mappings().all()
+
+        local_ticket_values = {str(t["broker_ticket"]) for t in open_tickets}
+        unmatched_broker_tickets = broker_position_tickets - local_ticket_values
+        for unmatched_ticket in sorted(unmatched_broker_tickets):
+            pos = positions_by_ticket.get(unmatched_ticket) or {}
+            alert_reconciliation_mismatch(
+                message="Broker reports an open position that is not open in local execution_tickets.",
+                broker=broker,
+                platform=platform,
+                data={
+                    "broker_ticket": unmatched_ticket,
+                    "position": pos,
+                },
+            )
+
+        for ticket in open_tickets:
+            broker_ticket = str(ticket["broker_ticket"])
+            pos = positions_by_ticket.get(broker_ticket)
+
+            if pos:
+                legs_confirmed_open += 1
+
+                db.execute(
+                    text(
+                        """
+                        UPDATE execution_tickets
+                        SET actual_fill_price = COALESCE(:open_price, actual_fill_price),
+                            sl_price = NULLIF(:sl_price, '')::numeric,
+                            tp_price = NULLIF(:tp_price, '')::numeric,
+                            lots = NULLIF(:lots, '')::numeric,
+                            raw_response = CAST(raw_response AS jsonb) || CAST(:raw AS jsonb),
+                            updated_at = now()
+                        WHERE ticket_id = CAST(:ticket_id AS uuid)
+                        """
+                    ),
+                    {
+                        "ticket_id": ticket["ticket_id"],
+                        "open_price": pos.get("open_price"),
+                        "sl_price": str(pos.get("sl_price") or ""),
+                        "tp_price": str(pos.get("tp_price") or ""),
+                        "lots": str(pos.get("lots") or ""),
+                        "raw": json.dumps(
+                            {
+                                "state_sync": {
+                                    "seen_open": True,
+                                    "synced_at": datetime.now(timezone.utc).isoformat(),
+                                    "position": pos,
+                                }
+                            },
+                            default=str,
+                        ),
+                    },
+                )
+
+                db.execute(
+                    text(
+                        """
+                        UPDATE trade_legs
+                        SET state = 'OPEN'
+                        WHERE leg_id = CAST(:leg_id AS uuid)
+                          AND state <> 'OPEN'
+                        """
+                    ),
+                    {"leg_id": ticket["leg_id"]},
+                )
+                tickets_updated += 1
+                affected_family_ids.add(ticket["family_id"])
+                continue
+
+            # Local ticket says open, broker no longer has it open.
+            # Classify closure reason based on last known price vs SL/TP.
+            side = ticket["side"]
+            fill = ticket["actual_fill_price"]
+            sl = ticket["sl_price"]
+            tp = ticket["tp_price"]
+
+            if fill is not None and sl is not None and tp is not None:
+                fill = float(fill)
+                sl = float(sl)
+                tp = float(tp)
+                # Use a small tolerance (0.5% of the range) for price proximity checks
+                price_range = abs(tp - sl) or 1.0
+                tolerance = price_range * 0.005
+
+                if side == "buy":
+                    if fill >= tp - tolerance:
+                        leg_state = "TP_HIT"
+                    elif fill <= sl + tolerance:
+                        leg_state = "SL_HIT"
+                    else:
+                        leg_state = "CLOSED_MANUAL"
+                else:  # sell
+                    if fill <= tp + tolerance:
+                        leg_state = "TP_HIT"
+                    elif fill >= sl - tolerance:
+                        leg_state = "SL_HIT"
+                    else:
+                        leg_state = "CLOSED_MANUAL"
+            else:
+                leg_state = "CLOSED"
+
+            closed_reason = leg_state.lower()
+
+            db.execute(
+                text(
+                    """
+                    UPDATE execution_tickets
+                    SET status = 'closed',
+                        raw_response = CAST(raw_response AS jsonb) || CAST(:raw AS jsonb),
+                        updated_at = now()
+                    WHERE ticket_id = CAST(:ticket_id AS uuid)
+                    """
+                ),
+                {
+                    "ticket_id": ticket["ticket_id"],
+                    "raw": json.dumps(
+                        {
+                            "state_sync": {
+                                "seen_open": False,
+                                "closed_reason": closed_reason,
+                                "synced_at": datetime.now(timezone.utc).isoformat(),
+                            }
+                        },
+                        default=str,
+                    ),
+                },
+            )
+
+            db.execute(
+                text(
+                    """
+                    UPDATE trade_legs
+                    SET state = :leg_state
+                    WHERE leg_id = CAST(:leg_id AS uuid)
+                    """
+                ),
+                {"leg_id": ticket["leg_id"], "leg_state": leg_state},
+            )
+
+            legs_marked_closed += 1
+            manual_or_broker_closed += 1
+            affected_family_ids.add(ticket["family_id"])
+
+        db.commit()
+
+    families_recomputed = 0
+    management_actions_applied = 0
+
+    for affected_family_id in affected_family_ids:
+        recompute_family_lifecycle(family_id=affected_family_id)
+        families_recomputed += 1
+
+        mgmt_result = apply_live_be_at_tp1(family_id=affected_family_id)
+        if mgmt_result.triggered and mgmt_result.legs_modified > 0:
+            management_actions_applied += 1
+
+    return StateSyncResult(
+        broker=broker,
+        platform=platform,
+        broker_positions_seen=len(positions),
+        local_open_tickets_seen=len(open_tickets),
+        legs_confirmed_open=legs_confirmed_open,
+        legs_marked_closed=legs_marked_closed,
+        manual_or_broker_closed=manual_or_broker_closed,
+        tickets_updated=tickets_updated,
+        families_recomputed=families_recomputed,
+        management_actions_applied=management_actions_applied,
+    )

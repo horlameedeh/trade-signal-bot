@@ -1,0 +1,102 @@
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass
+
+from sqlalchemy import text
+
+from app.db.session import SessionLocal
+from app.execution.base import ExecutionAdapter
+from app.execution.live_executor import LiveExecutionResult, execute_family_live
+from app.risk.exposure import evaluate_family_prop_risk
+
+
+@dataclass(frozen=True)
+class GuardedExecutionResult:
+    family_id: str
+    allowed: bool
+    requires_approval: bool
+    blocked: bool
+    risk_decision: str
+    risk_reasons: list[str]
+    execution_result: LiveExecutionResult | None
+
+
+def _write_risk_alert(*, family_id: str, decision: str, reasons: list[str]) -> None:
+    action = "risk_block" if decision == "block" else "risk_requires_approval"
+
+    with SessionLocal() as db:
+        db.execute(
+            text(
+                """
+                INSERT INTO control_actions (action, status, payload)
+                VALUES (
+                  :action,
+                  'queued',
+                  jsonb_build_object(
+                    'source', 'prop_risk_guard',
+                    'family_id', CAST(:family_id AS text),
+                    'decision', CAST(:decision AS text),
+                    'reasons', CAST(:reasons AS jsonb)
+                  )
+                )
+                """
+            ),
+            {
+                "action": action,
+                "family_id": family_id,
+                "decision": decision,
+                "reasons": json.dumps(reasons),
+            },
+        )
+        db.commit()
+
+
+def execute_family_with_prop_guard(
+    *,
+    family_id: str,
+    adapter: ExecutionAdapter,
+    daily_realized_pnl: str = "0",
+    total_realized_pnl: str = "0",
+) -> GuardedExecutionResult:
+    risk = evaluate_family_prop_risk(
+        family_id=family_id,
+        daily_realized_pnl=daily_realized_pnl,
+        total_realized_pnl=total_realized_pnl,
+    )
+
+    if risk.decision == "block":
+        _write_risk_alert(family_id=family_id, decision=risk.decision, reasons=risk.reasons)
+        return GuardedExecutionResult(
+            family_id=family_id,
+            allowed=False,
+            requires_approval=False,
+            blocked=True,
+            risk_decision=risk.decision,
+            risk_reasons=risk.reasons,
+            execution_result=None,
+        )
+
+    if risk.decision == "require_approval":
+        _write_risk_alert(family_id=family_id, decision=risk.decision, reasons=risk.reasons)
+        return GuardedExecutionResult(
+            family_id=family_id,
+            allowed=False,
+            requires_approval=True,
+            blocked=False,
+            risk_decision=risk.decision,
+            risk_reasons=risk.reasons,
+            execution_result=None,
+        )
+
+    execution = execute_family_live(family_id=family_id, adapter=adapter)
+
+    return GuardedExecutionResult(
+        family_id=family_id,
+        allowed=True,
+        requires_approval=False,
+        blocked=False,
+        risk_decision=risk.decision,
+        risk_reasons=risk.reasons,
+        execution_result=execution,
+    )

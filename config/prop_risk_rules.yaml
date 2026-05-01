@@ -1,0 +1,19 @@
+profiles:
+  ftmo:
+    max_daily_loss_pct: 5.0
+    max_total_loss_pct: 10.0
+    near_limit_threshold_pct: 80.0
+    min_trading_days: 4
+
+  traderscale:
+    max_daily_loss_pct: 5.0
+    max_total_loss_pct: 10.0
+    near_limit_threshold_pct: 80.0
+    min_trading_days: 3
+
+  fundednext:
+    max_daily_loss_pct: 5.0
+    max_total_loss_pct: 10.0
+    near_limit_threshold_pct: 80.0
+    min_trading_days: 4
+    note: "Placeholder until screenshots/rules are provided."
