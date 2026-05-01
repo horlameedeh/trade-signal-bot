@@ -70,7 +70,6 @@ from app.routing.showrouting import build_showrouting_text
 from app.routing.admin_commands import handle_admin_command
 from app.services.approval_callbacks import handle_approval_callback
 from app.telegram.account_commands import handle_account_command
-from app.telegram.onboarding import handle_onboarding_command
 from app.telegram.bot_client import BotCfg, load_bot_cfg, tg_get, tg_post
 
 
@@ -372,23 +371,6 @@ def poll_updates(cfg: BotCfg, control_chat_id: int, *, sleep_s: float = 1.0) -> 
                             "text": reply,
                             "parse_mode": "HTML",
                             "disable_web_page_preview": True,
-                        },
-                    )
-                    continue
-
-                onboarding_cmd = handle_onboarding_command(
-                    text=text_msg,
-                    telegram_user_id=uid,
-                    display_name=None,
-                )
-
-                if onboarding_cmd.handled:
-                    tg_post(
-                        cfg,
-                        "sendMessage",
-                        {
-                            "chat_id": control_chat_id,
-                            "text": onboarding_cmd.message,
                         },
                     )
                     continue
