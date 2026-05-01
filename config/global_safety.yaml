@@ -1,0 +1,18 @@
+enabled: true
+
+kill_switch:
+  enabled: false
+  reason: ""
+
+limits:
+  max_trades_per_day: 10
+  max_open_trades: 20
+  max_exposure_per_symbol:
+    XAUUSD: 1000
+    US30: 1000
+    NAS100: 1000
+    BTCUSD: 500
+    BTCUSDT: 500
+  global_loss_cutoff: 1000
+
+near_limit_threshold_pct: 80

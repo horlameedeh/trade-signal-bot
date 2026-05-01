@@ -1,6 +1,7 @@
 from cryptography.fernet import Fernet
 
 from app.services.broker_credentials import get_broker_password, safe_show_account
+from app.services.users import get_user_by_telegram_id
 from app.telegram.account_commands import handle_account_command, is_admin_user
 
 
@@ -57,8 +58,10 @@ def test_full_account_setup_via_commands(monkeypatch):
     assert "Password: configured" in shown.message
     assert "very-secret-password" not in shown.message
 
-    assert get_broker_password(label) == "very-secret-password"
-    assert "very-secret-password" not in safe_show_account(label)
+    user = get_user_by_telegram_id(telegram_user_id=111)
+    assert user is not None
+    assert get_broker_password(label, user_id=user.user_id) == "very-secret-password"
+    assert "very-secret-password" not in safe_show_account(label, user_id=user.user_id)
 
 
 def test_invalid_platform(monkeypatch):

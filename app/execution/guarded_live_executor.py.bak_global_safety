@@ -10,7 +10,6 @@ from app.execution.base import ExecutionAdapter
 from app.execution.live_executor import LiveExecutionResult
 from app.execution.retry import RetryPolicy, execute_family_live_with_retry
 from app.risk.exposure import evaluate_family_prop_risk
-from app.risk.global_safety import evaluate_global_safety
 from app.services.alerts import alert_execution_failure, alert_trade_opened
 
 
@@ -55,36 +54,6 @@ def _family_alert_context(*, family_id: str) -> dict:
     }
 
 
-def _write_global_safety_alert(*, family_id: str, decision: str, reasons: list[str]) -> None:
-    action = "global_safety_block" if decision == "block" else "global_safety_requires_approval"
-
-    with SessionLocal() as db:
-        db.execute(
-            text(
-                """
-                INSERT INTO control_actions (action, status, payload)
-                VALUES (
-                  :action,
-                  'queued',
-                  jsonb_build_object(
-                    'source', 'global_safety_guard',
-                    'family_id', CAST(:family_id AS text),
-                    'decision', CAST(:decision AS text),
-                    'reasons', CAST(:reasons AS text[])
-                  )
-                )
-                """
-            ),
-            {
-                "action": action,
-                "family_id": family_id,
-                "decision": decision,
-                "reasons": reasons,
-            },
-        )
-        db.commit()
-
-
 def _write_risk_alert(*, family_id: str, decision: str, reasons: list[str]) -> None:
     action = "risk_block" if decision == "block" else "risk_requires_approval"
 
@@ -123,40 +92,6 @@ def execute_family_with_prop_guard(
     total_realized_pnl: str = "0",
     retry_policy: RetryPolicy | None = None,
 ) -> GuardedExecutionResult:
-    global_safety = evaluate_global_safety(family_id=family_id)
-
-    if global_safety.decision == "block":
-        _write_global_safety_alert(
-            family_id=family_id,
-            decision=global_safety.decision,
-            reasons=global_safety.reasons,
-        )
-        return GuardedExecutionResult(
-            family_id=family_id,
-            allowed=False,
-            requires_approval=False,
-            blocked=True,
-            risk_decision=global_safety.decision,
-            risk_reasons=global_safety.reasons,
-            execution_result=None,
-        )
-
-    if global_safety.decision == "require_approval":
-        _write_global_safety_alert(
-            family_id=family_id,
-            decision=global_safety.decision,
-            reasons=global_safety.reasons,
-        )
-        return GuardedExecutionResult(
-            family_id=family_id,
-            allowed=False,
-            requires_approval=True,
-            blocked=False,
-            risk_decision=global_safety.decision,
-            risk_reasons=global_safety.reasons,
-            execution_result=None,
-        )
-
     risk = evaluate_family_prop_risk(
         family_id=family_id,
         daily_realized_pnl=daily_realized_pnl,

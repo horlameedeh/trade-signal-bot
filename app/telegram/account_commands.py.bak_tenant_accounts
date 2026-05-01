@@ -4,7 +4,6 @@ import os
 from dataclasses import dataclass
 
 from app.services.users import get_or_create_user
-from app.services.tenant_context import get_user_accounts
 from app.services.broker_credentials import (
     BrokerCredentialInput,
     safe_show_account,
@@ -39,8 +38,7 @@ def _usage() -> str:
         "!setlogin <label> <login>\n"
         "!setpassword <label> <password>\n"
         "!setserver <label> <server>\n"
-        "!showaccount <label>
-!myaccounts"
+        "!showaccount <label>"
     )
 
 
@@ -60,7 +58,6 @@ def handle_account_command(*, text: str, telegram_user_id: int | None) -> Accoun
         "!setpassword",
         "!setserver",
         "!showaccount",
-        "!myaccounts",
     }
 
     if command not in supported:
@@ -82,16 +79,6 @@ def handle_account_command(*, text: str, telegram_user_id: int | None) -> Accoun
             label = parts[1].strip()
             upsert_broker_credentials(BrokerCredentialInput(account_label=label, user_id=user.user_id))
             return AccountCommandResult(True, True, f"✅ Account created: {label}")
-
-        if command == "!myaccounts":
-            accounts = get_user_accounts(user_id=user.user_id)
-            if not accounts:
-                return AccountCommandResult(True, True, "No broker accounts linked to your user yet.")
-            lines = ["Your broker accounts:"]
-            for a in accounts:
-                active = "active" if a.is_active else "inactive"
-                lines.append(f"- {a.label or a.account_id}: {a.broker}/{a.platform} ({active})")
-            return AccountCommandResult(True, True, "\n".join(lines))
 
         if command == "!showaccount":
             if len(parts) < 2:
