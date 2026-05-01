@@ -4,3 +4,5 @@
 !.env.sample
 __pycache__/
 *.py[cod]
+logs/
+*.log

@@ -1,7 +1,7 @@
 param(
     [string]$ServiceName = "TradeBotExecutionNode",
     [string]$RepoPath = "C:\trade-signal-bot",
-    [string]$NssmPath = "C:\Tools\nssm\nssm.exe"
+    [string]$NssmPath = "C:\ProgramData\chocolatey\lib\nssm\tools\nssm.exe"
 )
 
 $ErrorActionPreference = "Stop"
