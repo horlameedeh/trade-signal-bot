@@ -39,8 +39,8 @@ def _usage() -> str:
         "!setlogin <label> <login>\n"
         "!setpassword <label> <password>\n"
         "!setserver <label> <server>\n"
-        "!showaccount <label>
-!myaccounts"
+        "!showaccount <label>\n"
+        "!myaccounts"
     )
 
 
