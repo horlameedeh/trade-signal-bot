@@ -375,22 +375,6 @@ def poll_updates(cfg: BotCfg, control_chat_id: int, *, sleep_s: float = 1.0) -> 
                     )
                     continue
 
-                account_cmd = handle_account_command(
-                    text=text_msg,
-                    telegram_user_id=uid,
-                )
-
-                if account_cmd.handled:
-                    tg_post(
-                        cfg,
-                        "sendMessage",
-                        {
-                            "chat_id": control_chat_id,
-                            "text": account_cmd.message,
-                        },
-                    )
-                    continue
-
                 # --- handle admin routing commands (!addchannel / !removechannel) ---
                 try:
                     with SessionLocal() as db:

@@ -1,0 +1,122 @@
+from __future__ import annotations
+
+import os
+from dataclasses import dataclass
+
+from app.services.broker_credentials import (
+    BrokerCredentialInput,
+    safe_show_account,
+    upsert_broker_credentials,
+)
+
+
+@dataclass(frozen=True)
+class AccountCommandResult:
+    handled: bool
+    ok: bool
+    message: str
+
+
+def _admin_ids() -> set[int]:
+    raw = os.getenv("TRADEBOT_ADMIN_TELEGRAM_USER_IDS", "")
+    return {int(x.strip()) for x in raw.split(",") if x.strip()}
+
+
+def is_admin_user(user_id: int | None) -> bool:
+    if user_id is None:
+        return False
+    return user_id in _admin_ids()
+
+
+def _usage() -> str:
+    return (
+        "Broker account commands:\n"
+        "!addaccount <label>\n"
+        "!setbroker <label> <broker>\n"
+        "!setmt <label> <mt4|mt5>\n"
+        "!setlogin <label> <login>\n"
+        "!setpassword <label> <password>\n"
+        "!setserver <label> <server>\n"
+        "!showaccount <label>"
+    )
+
+
+def handle_account_command(*, text: str, telegram_user_id: int | None) -> AccountCommandResult:
+    raw = (text or "").strip()
+    if not raw.startswith("!"):
+        return AccountCommandResult(handled=False, ok=False, message="")
+
+    parts = raw.split(maxsplit=2)
+    command = parts[0].lower()
+
+    supported = {
+        "!addaccount",
+        "!setbroker",
+        "!setmt",
+        "!setlogin",
+        "!setpassword",
+        "!setserver",
+        "!showaccount",
+    }
+
+    if command not in supported:
+        return AccountCommandResult(handled=False, ok=False, message="")
+
+    if not is_admin_user(telegram_user_id):
+        return AccountCommandResult(
+            handled=True,
+            ok=False,
+            message="❌ Not authorized.",
+        )
+
+    try:
+        if command == "!addaccount":
+            if len(parts) < 2:
+                return AccountCommandResult(True, False, _usage())
+            label = parts[1].strip()
+            upsert_broker_credentials(BrokerCredentialInput(account_label=label))
+            return AccountCommandResult(True, True, f"✅ Account created: {label}")
+
+        if command == "!showaccount":
+            if len(parts) < 2:
+                return AccountCommandResult(True, False, _usage())
+            label = parts[1].strip()
+            return AccountCommandResult(True, True, safe_show_account(label))
+
+        if len(parts) < 3:
+            return AccountCommandResult(True, False, _usage())
+
+        label = parts[1].strip()
+        value = parts[2].strip()
+
+        if command == "!setbroker":
+            upsert_broker_credentials(BrokerCredentialInput(account_label=label, broker=value.lower()))
+            return AccountCommandResult(True, True, f"✅ Broker updated for {label}: {value.lower()}")
+
+        if command == "!setmt":
+            platform = value.lower()
+            if platform not in {"mt4", "mt5"}:
+                return AccountCommandResult(True, False, "❌ Platform must be mt4 or mt5.")
+            upsert_broker_credentials(BrokerCredentialInput(account_label=label, platform=platform))
+            return AccountCommandResult(True, True, f"✅ Platform updated for {label}: {platform}")
+
+        if command == "!setlogin":
+            upsert_broker_credentials(BrokerCredentialInput(account_label=label, login=value))
+            return AccountCommandResult(True, True, f"✅ Login updated for {label}")
+
+        if command == "!setpassword":
+            upsert_broker_credentials(BrokerCredentialInput(account_label=label, password=value))
+            return AccountCommandResult(True, True, f"✅ Password updated for {label} (hidden)")
+
+        if command == "!setserver":
+            upsert_broker_credentials(BrokerCredentialInput(account_label=label, server=value))
+            return AccountCommandResult(True, True, f"✅ Server updated for {label}")
+
+    except Exception as exc:
+        return AccountCommandResult(
+            handled=True,
+            ok=False,
+            message=f"❌ Account command failed: {exc}",
+        )
+
+    return AccountCommandResult(handled=False, ok=False, message="")

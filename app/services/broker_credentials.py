@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
-from cryptography.fernet import Fernet
+from cryptography.fernet import Fernet, InvalidToken
 from sqlalchemy import text
 
 from app.db.session import SessionLocal
@@ -45,7 +45,10 @@ def _encrypt(value: str | None) -> str | None:
 def _decrypt(value: str | None) -> str | None:
     if not value:
         return None
-    return _fernet().decrypt(value.encode()).decode()
+    try:
+        return _fernet().decrypt(value.encode()).decode()
+    except InvalidToken:
+        return None
 
 
 def ensure_credentials_table() -> None:
