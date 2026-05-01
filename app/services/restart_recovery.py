@@ -36,7 +36,7 @@ def _count_pending_control_actions() -> int:
                     """
                     SELECT COUNT(*)
                     FROM control_actions
-                    WHERE status IN ('queued', 'pending')
+                    WHERE status IN ('queued', 'pending', 'failed')
                     """
                 )
             ).scalar()

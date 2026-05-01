@@ -3,8 +3,11 @@ from __future__ import annotations
 import argparse
 import os
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
+
+from dotenv import load_dotenv
 
 
 @dataclass
@@ -84,6 +87,8 @@ def check_live_gate_default() -> CheckResult:
 
 
 def main() -> int:
+    load_dotenv()
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--broker", default="ftmo")
     parser.add_argument("--platform", default="mt5")
@@ -105,7 +110,7 @@ def main() -> int:
                 run_cmd(
                     "restart recovery integration tests",
                     [
-                        "python",
+                        sys.executable,
                         "-m",
                         "pytest",
                         "-q",
@@ -117,7 +122,7 @@ def main() -> int:
                 run_cmd(
                     "node health alert integration tests",
                     [
-                        "python",
+                        sys.executable,
                         "-m",
                         "pytest",
                         "-q",
@@ -129,7 +134,7 @@ def main() -> int:
                 run_cmd(
                     "control bot account command tests",
                     [
-                        "python",
+                        sys.executable,
                         "-m",
                         "pytest",
                         "-q",
@@ -146,7 +151,7 @@ def main() -> int:
             run_cmd(
                 "execution node health check",
                 [
-                    "python",
+                    sys.executable,
                     "scripts/check_execution_node_health.py",
                     "--broker",
                     args.broker,
@@ -161,7 +166,7 @@ def main() -> int:
             run_cmd(
                 "restart recovery script",
                 [
-                    "python",
+                    sys.executable,
                     "scripts/recover_after_restart.py",
                     "--broker",
                     args.broker,
@@ -177,7 +182,7 @@ def main() -> int:
             run_cmd(
                 "one-shot state sync script",
                 [
-                    "python",
+                    sys.executable,
                     "scripts/sync_execution_state.py",
                     "--broker",
                     args.broker,

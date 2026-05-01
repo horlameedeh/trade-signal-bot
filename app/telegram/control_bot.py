@@ -202,7 +202,7 @@ def enqueue_action(
 
 def poll_updates(cfg: BotCfg, control_chat_id: int, *, sleep_s: float = 1.0) -> None:
     offset: Optional[int] = None
-    print("🤖 Control bot polling started. Press Ctrl+C to stop.")
+    print("Control bot polling started. Press Ctrl+C to stop.")
 
     while True:
         try:
