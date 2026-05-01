@@ -334,20 +334,6 @@ def poll_updates(cfg: BotCfg, control_chat_id: int, *, sleep_s: float = 1.0) -> 
                         )
                         continue
 
-                if text_msg.lower() == "!whoami":
-                    from_user = msg.get("from") or {}
-                    uid = from_user.get("id")
-                    tg_post(
-                        cfg,
-                        "sendMessage",
-                        {
-                            "chat_id": control_chat_id,
-                            "text": f"👤 Your Telegram user_id: <code>{uid}</code>",
-                            "parse_mode": "HTML",
-                        },
-                    )
-                    continue
-
                 if text_msg.lower() == "!showrouting":
                     reply = build_showrouting_text()
                     tg_post(
