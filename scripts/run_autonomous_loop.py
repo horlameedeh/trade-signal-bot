@@ -4,13 +4,15 @@ import argparse
 import time
 from dataclasses import asdict
 
+from pathlib import Path
+
 from dotenv import load_dotenv
 
 from app.services.autonomous_runner import run_autonomous_cycle
 
 
 def main() -> int:
-    load_dotenv()
+    load_dotenv(dotenv_path=Path(__file__).resolve().parent.parent / ".env")
 
     parser = argparse.ArgumentParser(description="Run TradeBot autonomous production loop.")
     parser.add_argument("--broker", default="ftmo")

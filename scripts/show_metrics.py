@@ -4,13 +4,15 @@ import argparse
 import json
 from dataclasses import asdict
 
+from pathlib import Path
+
 from dotenv import load_dotenv
 
 from app.services.metrics import get_monitoring_snapshot
 
 
 def main() -> int:
-    load_dotenv()
+    load_dotenv(dotenv_path=Path(__file__).resolve().parent.parent / ".env")
 
     parser = argparse.ArgumentParser(description="Show TradeBot DB-backed metrics.")
     parser.add_argument("--json", action="store_true")

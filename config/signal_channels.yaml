@@ -1,0 +1,8 @@
+enabled: true
+dry_run: true
+
+channels:
+  - provider: fredtrading
+    chat_id: -1001239815745
+    label: Fred Trading
+    enabled: true

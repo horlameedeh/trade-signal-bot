@@ -87,7 +87,7 @@ def check_live_gate_default() -> CheckResult:
 
 
 def main() -> int:
-    load_dotenv()
+    load_dotenv(dotenv_path=Path(__file__).resolve().parent.parent / ".env")
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--broker", default="ftmo")
