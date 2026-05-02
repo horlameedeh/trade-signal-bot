@@ -223,3 +223,26 @@ def test_process_autonomous_executions_records_blocked(monkeypatch, db_session):
     result = process_autonomous_executions(broker="ftmo", platform="mt5", limit=20)
 
     assert result.blocked >= 1
+def test_find_executable_families_skips_telethon_dry_run_family(db_session):
+    family_id = _seed_family(db_session, with_ticket=False)
+
+    db_session.execute(
+        text(
+            """
+            UPDATE telegram_messages tm
+            SET raw_json = jsonb_build_object(
+                'source', 'telethon_ingestion',
+                'dry_run', true
+            )
+            FROM trade_families tf
+            WHERE tf.source_msg_pk = tm.msg_pk
+              AND tf.family_id = CAST(:family_id AS uuid)
+            """
+        ),
+        {"family_id": family_id},
+    )
+    db_session.commit()
+
+    found = find_executable_families(broker="ftmo", platform="mt5", limit=20)
+
+    assert family_id not in found

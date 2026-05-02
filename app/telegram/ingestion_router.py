@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from sqlalchemy import text
 
 from app.db.session import SessionLocal
+from app.services.dry_run_pipeline import process_message_dry_run
 
 
 @dataclass(frozen=True)
@@ -81,10 +82,8 @@ def route_ingested_messages_dry_run(*, limit: int = 50) -> IngestionRouteResult:
     """
     Phase 3 dry-run router.
 
-    This only classifies and marks ingested messages. It does not yet call
-    the final parser/planner creation service because repos often differ in
-    parser entrypoint names. Phase 3b will wire the real parser after we inspect
-    the existing parser/planner entrypoints.
+    This routes trade-like ingested messages into the parsing/persistence flow
+    and marks the routing outcome on the source telegram message.
     """
     messages = list_unrouted_ingested_messages(limit=limit)
 
@@ -106,10 +105,19 @@ def route_ingested_messages_dry_run(*, limit: int = 50) -> IngestionRouteResult:
                 ignored += 1
                 continue
 
+            dry_result = process_message_dry_run(
+                chat_id=msg["chat_id"],
+                message_id=msg["message_id"],
+            )
+
             _mark_message_routed(
                 msg_pk=msg_pk,
-                status="candidate",
-                reason="looks_like_trade_signal",
+                status="planned",
+                reason=(
+                    f"parsed_type={dry_result.parsed_type}; "
+                    f"decision={dry_result.decision_action}; "
+                    f"family_created={dry_result.family_created}"
+                ),
             )
             routed += 1
 

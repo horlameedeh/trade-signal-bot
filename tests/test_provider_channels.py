@@ -44,3 +44,26 @@ def test_list_enabled_provider_channels_excludes_disabled():
 
     assert -100888000222 in chat_ids
     assert -100888000333 not in chat_ids
+def test_provider_channel_live_execution_defaults_false():
+    ch = upsert_provider_channel(
+        provider_code="test_live_controls",
+        chat_id=-100889000111,
+        title="Live Control Test",
+        is_enabled=True,
+    )
+
+    assert ch.allow_live_execution is False
+
+
+def test_provider_channel_can_enable_live_execution():
+    ch = upsert_provider_channel(
+        provider_code="test_live_controls",
+        chat_id=-100889000222,
+        title="Live Control Enabled",
+        is_enabled=True,
+        allow_live_execution=True,
+        notes="test enabled",
+    )
+
+    assert ch.allow_live_execution is True
+    assert ch.notes == "test enabled"

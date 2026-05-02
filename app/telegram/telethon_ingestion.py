@@ -138,6 +138,7 @@ async def run_telethon_ingestion() -> None:
         raise RuntimeError("No enabled telegram_provider_channels found")
 
     chat_to_provider = {c.chat_id: c.provider_code for c in channels}
+    chat_to_live_allowed = {c.chat_id: bool(getattr(c, "allow_live_execution", False)) for c in channels}
     chat_ids = list(chat_to_provider.keys())
 
     print(f"Starting Telethon ingestion. dry_run={dry_run} channels={len(chat_ids)}", flush=True)
@@ -165,6 +166,9 @@ async def run_telethon_ingestion() -> None:
                 print(f"Ignored empty message chat_id={chat_id} message_id={event.id}", flush=True)
                 return
 
+            channel_live_allowed = chat_to_live_allowed.get(chat_id, False)
+            effective_dry_run = dry_run or not channel_live_allowed
+
             result = persist_telegram_message(
                 provider_code=provider_code,
                 chat_id=chat_id,
@@ -174,13 +178,15 @@ async def run_telethon_ingestion() -> None:
                     "event_id": int(event.id),
                     "chat_id": chat_id,
                     "provider_code": provider_code,
+                    "channel_live_allowed": channel_live_allowed,
+                    "global_dry_run": dry_run,
                 },
-                dry_run=dry_run,
+                dry_run=effective_dry_run,
             )
 
             print(
                 f"ingested provider={provider_code} chat_id={chat_id} "
-                f"message_id={event.id} inserted={result.inserted} dry_run={dry_run}",
+                f"message_id={event.id} inserted={result.inserted} dry_run={result.dry_run}",
                 flush=True,
             )
 

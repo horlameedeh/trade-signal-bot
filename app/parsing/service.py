@@ -33,8 +33,9 @@ def _load_message_row(db, msg_pk: str):
                    tm.chat_id,
                    tm.message_id,
                    tm.text,
-                   tc.provider_code
+                   COALESCE(tpc.provider_code, tc.provider_code::text) AS provider_code
             FROM telegram_messages tm
+            LEFT JOIN telegram_provider_channels tpc ON tpc.chat_id = tm.chat_id
             JOIN telegram_chats tc ON tc.chat_id = tm.chat_id
             WHERE tm.msg_pk = CAST(:msg_pk AS uuid)
             """

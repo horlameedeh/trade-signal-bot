@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import sys
+
 from dotenv import load_dotenv
 
 from app.services.provider_channels import list_enabled_provider_channels, upsert_provider_channel
@@ -17,6 +19,15 @@ PRODUCTION_CHANNELS = [
 ]
 
 
+def _safe_print(message: str) -> None:
+    encoding = sys.stdout.encoding or "utf-8"
+    if hasattr(sys.stdout, "buffer"):
+        sys.stdout.buffer.write((message + "\n").encode(encoding, errors="backslashreplace"))
+        return
+
+    print(message.encode(encoding, errors="backslashreplace").decode(encoding))
+
+
 def main() -> int:
     load_dotenv()
 
@@ -30,11 +41,11 @@ def main() -> int:
             is_enabled=True,
             ingestion_mode="telethon",
         )
-        print(f"upserted {provider_code} {chat_id} {title}")
+        _safe_print(f"upserted {provider_code} {chat_id} {title}")
 
-    print("\nEnabled channels:")
+    _safe_print("\nEnabled channels:")
     for ch in list_enabled_provider_channels():
-        print(f"- {ch.provider_code}: {ch.chat_id} {ch.title}")
+        _safe_print(f"- {ch.provider_code}: {ch.chat_id} {ch.title}")
 
     return 0
 

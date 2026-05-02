@@ -39,6 +39,13 @@ def find_executable_families(*, broker: str, platform: str, limit: int = 20) -> 
                   AND ba.broker = :broker
                   AND ba.platform = :platform
                   AND ba.is_active = true
+                                    AND NOT EXISTS (
+                                        SELECT 1
+                                        FROM telegram_messages tm
+                                        WHERE tm.msg_pk = tf.source_msg_pk
+                                            AND tm.raw_json->>'source' = 'telethon_ingestion'
+                                            AND tm.raw_json->>'dry_run' = 'true'
+                                    )
                 GROUP BY tf.family_id, tf.created_at
                 HAVING COUNT(et.ticket_id) = 0
                 ORDER BY tf.created_at ASC
