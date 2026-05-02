@@ -1,0 +1,80 @@
+from app.risk.lot_sizing import LotSizingInput, resolve_lot_sizing
+
+
+def test_resolver_applies_500_vantage_small_account():
+    result = resolve_lot_sizing(
+        LotSizingInput(
+            provider="fredtrading",
+            account_type="vantage",
+            account_size=500,
+            account_currency="GBP",
+            modifiers=[],
+            tp_count=4,
+        )
+    )
+
+    assert result.total_lots == "0.04"
+    assert result.per_leg_lots == ["0.01", "0.01", "0.01", "0.01"]
+    assert result.style_used == "small_account_fixed_lot_profile"
+
+
+def test_resolver_applies_350_startrader_small_account():
+    result = resolve_lot_sizing(
+        LotSizingInput(
+            provider="mubeen",
+            account_type="startrader",
+            account_size=350,
+            account_currency="GBP",
+            modifiers=[],
+            tp_count=4,
+        )
+    )
+
+    assert result.total_lots == "0.04"
+    assert result.per_leg_lots == ["0.01", "0.01", "0.01", "0.01"]
+
+
+def test_resolver_applies_currency_normalized_small_account():
+    result = resolve_lot_sizing(
+        LotSizingInput(
+            provider="fredtrading",
+            account_type="vtmarkets",
+            account_size=625,
+            account_currency="USD",
+            modifiers=[],
+            tp_count=4,
+        )
+    )
+
+    assert result.total_lots == "0.04"
+    assert result.per_leg_lots == ["0.01", "0.01", "0.01", "0.01"]
+
+
+def test_existing_ftmo_10000_rule_still_works():
+    result = resolve_lot_sizing(
+        LotSizingInput(
+            provider="fredtrading",
+            account_type="ftmo",
+            account_size=10000,
+            modifiers=[],
+            tp_count=2,
+        )
+    )
+
+    assert result.total_lots == "0.20"
+    assert result.per_leg_lots == ["0.10", "0.10"]
+
+
+def test_existing_half_risk_rule_still_works():
+    result = resolve_lot_sizing(
+        LotSizingInput(
+            provider="fredtrading",
+            account_type="ftmo",
+            account_size=10000,
+            modifiers=["HALF_RISK"],
+            tp_count=2,
+        )
+    )
+
+    assert result.total_lots == "0.10"
+    assert result.per_leg_lots == ["0.05", "0.05"]

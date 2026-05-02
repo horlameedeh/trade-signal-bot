@@ -1,0 +1,10 @@
+base_currency: GBP
+
+rates_to_base:
+  GBP: 1.0
+  USD: 0.80
+  EUR: 0.86
+  CZK: 0.034
+  AUD: 0.52
+  CAD: 0.59
+  CHF: 0.95

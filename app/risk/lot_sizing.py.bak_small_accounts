@@ -3,8 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal, ROUND_HALF_UP
 
-from app.services.small_account_lot_sizing import resolve_small_account_lot_sizing
-
 
 @dataclass(frozen=True)
 class LotSizingInput:
@@ -13,8 +11,6 @@ class LotSizingInput:
     account_size: int
     modifiers: list[str]
     tp_count: int
-    broker: str | None = None
-    account_currency: str = "GBP"
     special_rule: str | None = None
     is_swing: bool = False
 
@@ -69,21 +65,6 @@ def _resolve_base_total(inp: LotSizingInput) -> Decimal:
 
 
 def resolve_lot_sizing(inp: LotSizingInput) -> LotSizingResult:
-    small = resolve_small_account_lot_sizing(
-        broker=inp.broker or inp.account_type,
-        account_size=inp.account_size,
-        account_currency=inp.account_currency,
-        tp_count=inp.tp_count,
-    )
-
-    if small.applies:
-        return LotSizingResult(
-            total_lots=small.total_lot,
-            per_leg_lots=small.leg_lots,
-            modifier_multiplier="1",
-            style_used=small.reason,
-        )
-
     base_total = _resolve_base_total(inp)
     style_used = "normal"
 

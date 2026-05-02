@@ -1,0 +1,77 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from decimal import Decimal
+
+from app.services.fx_rates import normalize_to_base
+
+
+SUPPORTED_SMALL_BROKERS = {"vantage", "startrader", "vtmarkets"}
+
+
+@dataclass(frozen=True)
+class SmallAccountLotSizingResult:
+    broker: str
+    account_size: str
+    account_currency: str
+    normalized_account_size: str
+    base_currency: str
+    applies: bool
+    total_lot: str
+    leg_lots: list[str]
+    reason: str
+
+
+def _d(value) -> Decimal:
+    return Decimal(str(value))
+
+
+def resolve_small_account_lot_sizing(
+    *,
+    broker: str,
+    account_size: str | int | Decimal,
+    account_currency: str,
+    tp_count: int = 4,
+) -> SmallAccountLotSizingResult:
+    broker_norm = broker.lower().replace("_", "").replace("-", "")
+
+    fx = normalize_to_base(
+        amount=account_size,
+        currency=account_currency,
+    )
+
+    normalized_size = _d(fx.normalized_amount)
+
+    applies = broker_norm in SUPPORTED_SMALL_BROKERS and normalized_size in {
+        Decimal("350.00"),
+        Decimal("500.00"),
+    }
+
+    if not applies:
+        return SmallAccountLotSizingResult(
+            broker=broker_norm,
+            account_size=str(account_size),
+            account_currency=account_currency.upper(),
+            normalized_account_size=fx.normalized_amount,
+            base_currency=fx.base_currency,
+            applies=False,
+            total_lot="0",
+            leg_lots=[],
+            reason="small_account_profile_not_applicable",
+        )
+
+    leg_count = max(1, tp_count)
+    leg_lots = ["0.01" for _ in range(leg_count)]
+    total = Decimal("0.01") * Decimal(leg_count)
+
+    return SmallAccountLotSizingResult(
+        broker=broker_norm,
+        account_size=str(account_size),
+        account_currency=account_currency.upper(),
+        normalized_account_size=fx.normalized_amount,
+        base_currency=fx.base_currency,
+        applies=True,
+        total_lot=str(total.quantize(Decimal("0.01"))),
+        leg_lots=leg_lots,
+        reason="small_account_fixed_lot_profile",
+    )

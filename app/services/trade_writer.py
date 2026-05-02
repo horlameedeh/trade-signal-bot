@@ -59,16 +59,20 @@ def _infer_special_rule(row) -> str | None:
     return None
 
 
-def _resolve_account_context(db, account_id: str | None) -> tuple[str, int, str]:
+def _resolve_account_context(db, account_id: str | None) -> dict[str, str | int]:
     if not account_id:
         raise RuntimeError("trade_plan.account_id missing for lot sizing")
 
     acc = db.execute(
         text(
             """
-            SELECT broker, platform, equity_start
-            FROM broker_accounts
-            WHERE account_id = CAST(:account_id AS uuid)
+            SELECT
+              ba.broker,
+              ba.platform,
+              ba.account_currency,
+              COALESCE(ba.account_size, ba.equity_start, ba.equity_current, 10000) AS account_size
+            FROM broker_accounts ba
+            WHERE ba.account_id = CAST(:account_id AS uuid)
             LIMIT 1
             """
         ),
@@ -80,11 +84,8 @@ def _resolve_account_context(db, account_id: str | None) -> tuple[str, int, str]
 
     broker = str(acc["broker"])
     platform = str(acc["platform"])
-    equity_start = acc["equity_start"]
-    if equity_start is None:
-        raise RuntimeError(f"broker_account.equity_start missing for account_id={account_id}")
-
-    account_size = int(Decimal(str(equity_start)))
+    account_size = int(Decimal(str(acc["account_size"])))
+    account_currency = str(acc["account_currency"] or "GBP")
 
     # Map broker to account_type expected by risk policy
     if broker in {"vantage", "startrader", "vtmarkets"}:
@@ -98,7 +99,13 @@ def _resolve_account_context(db, account_id: str | None) -> tuple[str, int, str]
     else:
         raise RuntimeError(f"Unsupported broker for lot sizing policy: {broker}")
 
-    return account_type, account_size, platform
+    return {
+        "broker": broker,
+        "platform": platform,
+        "account_type": account_type,
+        "account_size": account_size,
+        "account_currency": account_currency,
+    }
 
 
 def create_trade_family_and_legs(
@@ -175,17 +182,14 @@ def create_trade_family_and_legs(
             tp_count = 1
 
         if total_lot is None:
-            account_type, account_size, platform = _resolve_account_context(db, row["account_id"])
+            account = _resolve_account_context(db, row["account_id"])
             modifiers = _infer_modifiers(row)
             special_rule = _infer_special_rule(row)
 
             symbol_result = resolve_broker_symbol(
                 canonical_symbol=row["symbol_canonical"],
-                broker=account_type if account_type != "live" else str(db.execute(
-                    text("SELECT broker FROM broker_accounts WHERE account_id = CAST(:account_id AS uuid)"),
-                    {"account_id": row["account_id"]},
-                ).scalar()),
-                platform=platform,
+                broker=account["account_type"] if account["account_type"] != "live" else account["broker"],
+                platform=str(account["platform"]),
             )
             if symbol_result.blocked:
                 raise RuntimeError(
@@ -196,10 +200,12 @@ def create_trade_family_and_legs(
             sizing = resolve_lot_sizing(
                 LotSizingInput(
                     provider=row["provider"],
-                    account_type=account_type,
-                    account_size=account_size,
+                    account_type=str(account["account_type"]),
+                    account_size=int(account["account_size"]),
                     modifiers=modifiers,
                     tp_count=tp_count,
+                    broker=str(account["broker"]),
+                    account_currency=str(account.get("account_currency") or "GBP"),
                     is_swing=bool(row["is_swing"]),
                     special_rule=special_rule,
                 )
