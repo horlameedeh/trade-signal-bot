@@ -37,12 +37,12 @@ def test_trade_writer_uses_small_account_currency_size(db_session):
             INSERT INTO broker_accounts (
               account_id, broker, platform, kind, label,
               allowed_providers, equity_start, equity_current,
-              account_size, account_currency, is_active
+                            base_currency, is_active
             )
             VALUES (
                             CAST(:account_id AS uuid), 'vantage', 'mt5', 'personal_live', 'small-vantage-test',
               ARRAY[]::provider_code[], 500, 500,
-              500, 'GBP', true
+                            'GBP', true
             )
         """),
         {"account_id": account_id},

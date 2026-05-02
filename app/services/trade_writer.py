@@ -69,8 +69,8 @@ def _resolve_account_context(db, account_id: str | None) -> dict[str, str | int]
             SELECT
               ba.broker,
               ba.platform,
-              ba.account_currency,
-              COALESCE(ba.account_size, ba.equity_start, ba.equity_current, 10000) AS account_size
+                            COALESCE(ba.base_currency, 'GBP') AS account_currency,
+                            COALESCE(ba.equity_start, ba.equity_current, 10000) AS account_size
             FROM broker_accounts ba
             WHERE ba.account_id = CAST(:account_id AS uuid)
             LIMIT 1
