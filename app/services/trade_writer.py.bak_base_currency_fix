@@ -69,8 +69,8 @@ def _resolve_account_context(db, account_id: str | None) -> dict[str, str | int]
             SELECT
               ba.broker,
               ba.platform,
-              COALESCE(ba.base_currency, 'GBP') AS account_currency,
-              COALESCE(ba.equity_start, ba.equity_current, 10000) AS account_size
+              ba.account_currency,
+              COALESCE(ba.account_size, ba.equity_start, ba.equity_current, 10000) AS account_size
             FROM broker_accounts ba
             WHERE ba.account_id = CAST(:account_id AS uuid)
             LIMIT 1
@@ -204,6 +204,7 @@ def create_trade_family_and_legs(
                     account_size=int(account["account_size"]),
                     modifiers=modifiers,
                     tp_count=tp_count,
+                    broker=str(account["broker"]),
                     account_currency=str(account.get("account_currency") or "GBP"),
                     is_swing=bool(row["is_swing"]),
                     special_rule=special_rule,
