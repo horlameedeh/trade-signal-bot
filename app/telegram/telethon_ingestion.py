@@ -142,7 +142,14 @@ async def run_telethon_ingestion() -> None:
 
     print(f"Starting Telethon ingestion. dry_run={dry_run} channels={len(chat_ids)}", flush=True)
 
-    client = TelegramClient(session_name, api_id, api_hash)
+    client = TelegramClient(
+        session_name,
+        api_id,
+        api_hash,
+        connection_retries=None,
+        retry_delay=5,
+        auto_reconnect=True,
+    )
 
     @client.on(events.NewMessage(chats=chat_ids))
     async def handler(event):
