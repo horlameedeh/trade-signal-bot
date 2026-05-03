@@ -1,0 +1,16 @@
+broker: bullwaves
+display_name: Bullwaves
+platforms:
+  - mt4
+  - mt5
+account_scope: small_live
+default_base_currency: GBP
+min_lot: 0.01
+lot_step: 0.01
+small_account_lot_profile:
+  enabled: true
+  supported_normalized_account_sizes:
+    - 350
+    - 500
+  total_lots: 0.04
+  per_leg_lot: 0.01

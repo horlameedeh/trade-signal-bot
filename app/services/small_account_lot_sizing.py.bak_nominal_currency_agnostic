@@ -40,21 +40,12 @@ def resolve_small_account_lot_sizing(
         currency=account_currency,
     )
 
-    native_size = _d(account_size).quantize(Decimal("0.01"))
     normalized_size = _d(fx.normalized_amount)
 
-    supported_sizes = {
+    applies = broker_norm in SUPPORTED_SMALL_BROKERS and normalized_size in {
         Decimal("350.00"),
         Decimal("500.00"),
     }
-
-    applies = (
-        broker_norm in SUPPORTED_SMALL_BROKERS
-        and (
-            native_size in supported_sizes
-            or normalized_size in supported_sizes
-        )
-    )
 
     if not applies:
         return SmallAccountLotSizingResult(

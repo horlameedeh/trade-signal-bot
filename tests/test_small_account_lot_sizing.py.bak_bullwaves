@@ -74,15 +74,3 @@ def test_currency_normalized_equivalent_applies():
     assert result.applies is True
     assert result.normalized_account_size == "500.00"
     assert result.total_lot == "0.04"
-
-def test_500_usd_nominal_small_account_applies():
-    result = resolve_small_account_lot_sizing(
-        broker="vantage",
-        account_size="500",
-        account_currency="USD",
-        tp_count=4,
-    )
-
-    assert result.applies is True
-    assert result.total_lot == "0.04"
-    assert result.leg_lots == ["0.01", "0.01", "0.01", "0.01"]

@@ -201,6 +201,7 @@ def create_trade_family_and_legs(
                 LotSizingInput(
                     provider=row["provider"],
                     account_type=str(account["account_type"]),
+                    broker=str(account["broker"]),
                     account_size=int(account["account_size"]),
                     modifiers=modifiers,
                     tp_count=tp_count,

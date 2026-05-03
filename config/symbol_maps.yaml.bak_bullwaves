@@ -26,6 +26,7 @@ brokers:
       DJ30: US30.cash
       NAS100: US100.cash
       BTCUSD: BTCUSD
+
   traderscale:
     mt4:
       XAUUSD: XAUUSD
@@ -53,6 +54,7 @@ brokers:
       DJ30: DJ30
       NAS100: NAS100
       BTCUSD: BTCUSD
+
   fundednext:
     mt4:
       XAUUSD: XAUUSD
@@ -80,6 +82,7 @@ brokers:
       DJ30: US30
       NAS100: US100
       BTCUSD: BTCUSD
+
   vantage:
     mt4:
       XAUUSD: GOLD
@@ -107,6 +110,7 @@ brokers:
       DJ30: US30
       NAS100: NAS100
       BTCUSD: BTCUSD
+
   startrader:
     mt4:
       XAUUSD: XAUUSD
@@ -134,6 +138,7 @@ brokers:
       DJ30: US30
       NAS100: NAS100
       BTCUSD: BTCUSD
+
   vtmarkets:
     mt4:
       XAUUSD: XAUUSD
@@ -161,6 +166,7 @@ brokers:
       DJ30: US30
       NAS100: NAS100
       BTCUSD: BTCUSD
+
   bullwaves:
     mt4:
       XAUUSD: XAUUSD
@@ -188,4 +194,3 @@ brokers:
       DJ30: US30
       NAS100: NAS100
       BTCUSD: BTCUSD
-
