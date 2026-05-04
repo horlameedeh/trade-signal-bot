@@ -26,12 +26,20 @@ def upgrade() -> None:
             nullable=False,
             server_default=sa.text("gen_random_uuid()"),
         ),
+        sa.Column("broker_account_id", sa.UUID(), nullable=False),
         sa.Column("terminal_name", sa.Text(), nullable=False),
+        sa.Column("terminal_path", sa.Text(), nullable=True),
+        sa.Column("data_dir", sa.Text(), nullable=True),
+        sa.Column("port", sa.Integer(), nullable=True),
         sa.Column("status", sa.Text(), nullable=False, server_default=sa.text("'active'")),
+        sa.Column("created_at", sa.TIMESTAMP(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column("updated_at", sa.TIMESTAMP(timezone=True), nullable=False, server_default=sa.text("now()")),
         sa.Column("started_at", sa.TIMESTAMP(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column("last_heartbeat", sa.TIMESTAMP(timezone=True), nullable=True),
         sa.Column("ended_at", sa.TIMESTAMP(timezone=True), nullable=True),
         sa.Column("meta", sa.JSON(), nullable=False, server_default=sa.text("'{}'::jsonb")),
         sa.PrimaryKeyConstraint("session_id"),
+        sa.ForeignKeyConstraint(["broker_account_id"], ["broker_accounts.account_id"], ondelete="CASCADE"),
     )
     op.create_index(
         "idx_terminal_sessions_status",
@@ -40,10 +48,23 @@ def upgrade() -> None:
         unique=False,
     )
     op.create_index(
+        "idx_terminal_sessions_broker_account_id",
+        "terminal_sessions",
+        ["broker_account_id"],
+        unique=False,
+    )
+    op.create_index(
         "uq_terminal_sessions_terminal_name_started_at",
         "terminal_sessions",
         ["terminal_name", "started_at"],
         unique=True,
+    )
+    op.execute(
+        """
+        CREATE UNIQUE INDEX uq_terminal_sessions_active_account
+        ON terminal_sessions (broker_account_id)
+        WHERE status IN ('starting', 'running')
+        """
     )
 
 

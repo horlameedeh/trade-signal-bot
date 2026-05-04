@@ -22,6 +22,7 @@ def run(cmd: list[str]) -> None:
 def check_files() -> None:
     required = [
         "alembic/versions/89f12e0ba78a_add_terminal_sessions.py",
+        "app/execution/terminal_sessions.py",
         "tests/test_terminal_sessions.py",
         "scripts/assert_milestone27_phase1.py",
     ]
@@ -66,6 +67,7 @@ def main() -> int:
     print("✅ Milestone 27 Phase 1 ACCEPTED")
     print("\nVerified:")
     print("- terminal_sessions migration exists")
+    print("- terminal session routing module exists")
     print("- terminal_sessions table exists in the database")
     print("- terminal sessions can be created and closed")
     return 0
