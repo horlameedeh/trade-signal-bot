@@ -85,7 +85,7 @@ def _seed_cap_test_family(db_session, *, label: str, lots: list[str]) -> str:
             VALUES (
               CAST(:account_id AS uuid), 'vantage', 'mt5', 'personal_live', :label,
               'GBP', 500, 500,
-              ARRAY[]::provider_code[], true
+                            ARRAY[]::provider_code[], false
             )
             """
         ),

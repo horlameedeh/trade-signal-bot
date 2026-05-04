@@ -20,10 +20,10 @@ def upgrade() -> None:
         """
         UPDATE broker_accounts
         SET is_active = false
-        WHERE id IN (
-            SELECT id
+        WHERE account_id IN (
+            SELECT account_id
             FROM (
-                SELECT id,
+                SELECT account_id,
                        ROW_NUMBER() OVER (
                            PARTITION BY broker, platform
                            ORDER BY updated_at DESC NULLS LAST,

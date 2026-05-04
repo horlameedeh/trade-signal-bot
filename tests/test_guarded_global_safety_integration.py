@@ -116,7 +116,7 @@ def _seed_family(db_session, *, symbol: str = "XAUUSD", equity_start: str = "100
             )
             VALUES (
               CAST(:account_id AS uuid), 'ftmo', 'mt5', 'personal_live', 'guard-global-seed',
-              ARRAY[]::provider_code[], :equity_start, :equity_start, true
+                            ARRAY[]::provider_code[], :equity_start, :equity_start, false
             )
             """
         ),
