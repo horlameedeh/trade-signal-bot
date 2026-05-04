@@ -73,7 +73,7 @@ def _seed_family(db_session, *, equity_start: str = "10000", lots: float = 0.01)
             )
             VALUES (
               CAST(:account_id AS uuid), 'ftmo', 'mt5', 'personal_live', 'guard-retry-seed',
-              ARRAY[]::provider_code[], :equity_start, :equity_start, true
+                            ARRAY[]::provider_code[], :equity_start, :equity_start, false
             )
             """
         ),
@@ -185,6 +185,53 @@ def _seed_family(db_session, *, equity_start: str = "10000", lots: float = 0.01)
     return family_id
 
 
+def _seed_terminal_session(db_session, *, family_id: str) -> None:
+    account_id = db_session.execute(
+        text(
+            """
+            SELECT account_id::text
+            FROM trade_families
+            WHERE family_id = CAST(:family_id AS uuid)
+            LIMIT 1
+            """
+        ),
+        {"family_id": family_id},
+    ).scalar()
+
+    db_session.execute(
+        text(
+            """
+            INSERT INTO terminal_sessions (
+              session_id,
+              broker_account_id,
+              terminal_name,
+              terminal_path,
+              data_dir,
+              port,
+              status,
+              started_at,
+              last_heartbeat,
+              meta
+            )
+            VALUES (
+              gen_random_uuid(),
+              CAST(:account_id AS uuid),
+              :terminal_name,
+              '/tmp/mt5',
+              '/tmp/mt5-data',
+              20002,
+              'running',
+              now(),
+              now(),
+              '{}'::jsonb
+            )
+            """
+        ),
+        {"account_id": account_id, "terminal_name": f"guarded-retry-{family_id[:8]}"},
+    )
+    db_session.commit()
+
+
 def _count_actions(db_session, family_id: str, action: str) -> int:
     return db_session.execute(
         text(
@@ -208,6 +255,7 @@ def _count_tickets(db_session, family_id: str) -> int:
 
 def test_guarded_executor_retries_and_succeeds(db_session):
     family_id = _seed_family(db_session)
+    _seed_terminal_session(db_session, family_id=family_id)
     adapter = FlakyAdapter(fail_times=1)
 
     result = execute_family_with_prop_guard(
@@ -227,6 +275,7 @@ def test_guarded_executor_retries_and_succeeds(db_session):
 
 def test_guarded_executor_dead_letters_after_retry_failure(db_session):
     family_id = _seed_family(db_session)
+    _seed_terminal_session(db_session, family_id=family_id)
     adapter = FlakyAdapter(fail_times=99)
 
     result = execute_family_with_prop_guard(

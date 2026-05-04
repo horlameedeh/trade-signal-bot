@@ -265,6 +265,53 @@ def _count_open_trade_families(db_session) -> int:
     )
 
 
+def _seed_terminal_session(db_session, *, family_id: str) -> None:
+    account_id = db_session.execute(
+        text(
+            """
+            SELECT account_id::text
+            FROM trade_families
+            WHERE family_id = CAST(:family_id AS uuid)
+            LIMIT 1
+            """
+        ),
+        {"family_id": family_id},
+    ).scalar()
+
+    db_session.execute(
+        text(
+            """
+            INSERT INTO terminal_sessions (
+              session_id,
+              broker_account_id,
+              terminal_name,
+              terminal_path,
+              data_dir,
+              port,
+              status,
+              started_at,
+              last_heartbeat,
+              meta
+            )
+            VALUES (
+              gen_random_uuid(),
+              CAST(:account_id AS uuid),
+              :terminal_name,
+              '/tmp/mt5',
+              '/tmp/mt5-data',
+              20004,
+              'running',
+              now(),
+              now(),
+              '{}'::jsonb
+            )
+            """
+        ),
+        {"account_id": account_id, "terminal_name": f"global-safety-{family_id[:8]}"},
+    )
+    db_session.commit()
+
+
 def test_guarded_executor_blocks_when_global_kill_switch_enabled(monkeypatch, db_session, tmp_path):
     family_id = _seed_family(db_session)
     adapter = FakeAdapter()
@@ -330,6 +377,7 @@ near_limit_threshold_pct: 99
 
 def test_guarded_executor_allows_when_global_safety_allows(monkeypatch, db_session, tmp_path):
     family_id = _seed_family(db_session)
+    _seed_terminal_session(db_session, family_id=family_id)
     adapter = FakeAdapter()
 
     cfg = _write_cfg(

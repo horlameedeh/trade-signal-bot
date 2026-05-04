@@ -9,6 +9,10 @@ from app.db.session import SessionLocal
 from app.execution.base import ExecutionAdapter
 from app.execution.live_executor import LiveExecutionResult
 from app.execution.retry import RetryPolicy, execute_family_live_with_retry
+from app.execution.terminal_sessions import (
+    TerminalSessionRoutingError,
+    resolve_terminal_session_for_account,
+)
 from app.risk.exposure import evaluate_family_prop_risk
 from app.risk.global_safety import evaluate_global_safety
 from app.services.alerts import alert_execution_failure, alert_trade_opened
@@ -117,6 +121,63 @@ def _write_risk_alert(*, family_id: str, decision: str, reasons: list[str]) -> N
         db.commit()
 
 
+def _family_account_id(*, family_id: str) -> str:
+    with SessionLocal() as db:
+        account_id = db.execute(
+            text(
+                """
+                SELECT account_id::text
+                FROM trade_families
+                WHERE family_id = CAST(:family_id AS uuid)
+                LIMIT 1
+                """
+            ),
+            {"family_id": family_id},
+        ).scalar()
+
+    if not account_id:
+        raise RuntimeError(f"trade_family account not found: {family_id}")
+
+    return str(account_id)
+
+
+def _write_terminal_routing_block(*, family_id: str, account_id: str, reason: str) -> None:
+    with SessionLocal() as db:
+        db.execute(
+            text(
+                """
+                INSERT INTO control_actions (action, status, payload)
+                VALUES (
+                  'terminal_routing_block',
+                  'queued',
+                  jsonb_build_object(
+                    'source', 'terminal_session_guard',
+                    'family_id', CAST(:family_id AS text),
+                    'account_id', CAST(:account_id AS text),
+                    'reason', CAST(:reason AS text)
+                  )
+                )
+                """
+            ),
+            {"family_id": family_id, "account_id": account_id, "reason": reason},
+        )
+        db.commit()
+
+
+def _assert_terminal_session_routing(*, family_id: str) -> None:
+    account_id = _family_account_id(family_id=family_id)
+
+    try:
+        resolve_terminal_session_for_account(broker_account_id=account_id)
+    except TerminalSessionRoutingError as exc:
+        _write_terminal_routing_block(
+            family_id=family_id,
+            account_id=account_id,
+            reason=str(exc),
+        )
+        raise
+
+
 def execute_family_with_prop_guard(
     *,
     family_id: str,
@@ -188,6 +249,8 @@ def execute_family_with_prop_guard(
             risk_reasons=risk.reasons,
             execution_result=None,
         )
+
+    _assert_terminal_session_routing(family_id=family_id)
 
     ctx = _family_alert_context(family_id=family_id)
 

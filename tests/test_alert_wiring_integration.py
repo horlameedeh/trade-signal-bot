@@ -85,7 +85,7 @@ def _seed_family(db_session) -> tuple[str, list[str]]:
             )
             VALUES (
               CAST(:account_id AS uuid), 'ftmo', 'mt5', 'personal_live', 'alert-seed',
-              ARRAY[]::provider_code[], 10000, 10000, true
+                            ARRAY[]::provider_code[], 10000, 10000, false
             )
             """
         ),
@@ -200,8 +200,56 @@ def _seed_family(db_session) -> tuple[str, list[str]]:
     return family_id, leg_ids
 
 
+def _seed_terminal_session(db_session, *, family_id: str) -> None:
+    account_id = db_session.execute(
+        text(
+            """
+            SELECT account_id::text
+            FROM trade_families
+            WHERE family_id = CAST(:family_id AS uuid)
+            LIMIT 1
+            """
+        ),
+        {"family_id": family_id},
+    ).scalar()
+
+    db_session.execute(
+        text(
+            """
+            INSERT INTO terminal_sessions (
+              session_id,
+              broker_account_id,
+              terminal_name,
+              terminal_path,
+              data_dir,
+              port,
+              status,
+              started_at,
+              last_heartbeat,
+              meta
+            )
+            VALUES (
+              gen_random_uuid(),
+              CAST(:account_id AS uuid),
+              :terminal_name,
+              '/tmp/mt5',
+              '/tmp/mt5-data',
+              20003,
+              'running',
+              now(),
+              now(),
+              '{}'::jsonb
+            )
+            """
+        ),
+        {"account_id": account_id, "terminal_name": f"alert-{family_id[:8]}"},
+    )
+    db_session.commit()
+
+
 def test_guarded_execution_queues_trade_opened_alert(db_session):
     family_id, leg_ids = _seed_family(db_session)
+    _seed_terminal_session(db_session, family_id=family_id)
 
     result = execute_family_with_prop_guard(family_id=family_id, adapter=FakeAdapter())
 
@@ -213,6 +261,7 @@ def test_guarded_execution_queues_trade_opened_alert(db_session):
 
 def test_ticket_ops_queue_modify_and_close_alerts(monkeypatch, db_session):
     family_id, leg_ids = _seed_family(db_session)
+    _seed_terminal_session(db_session, family_id=family_id)
 
     # Execute first to create tickets.
     execute_family_with_prop_guard(family_id=family_id, adapter=FakeAdapter())

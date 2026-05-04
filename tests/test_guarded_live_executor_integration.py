@@ -76,7 +76,7 @@ def _seed_family(
             )
             VALUES (
               CAST(:account_id AS uuid), :broker, 'mt5', 'personal_live', 'guard-seed',
-              ARRAY[]::provider_code[], :equity_start, :equity_start, true
+                            ARRAY[]::provider_code[], :equity_start, :equity_start, false
             )
             """
         ),
@@ -194,8 +194,56 @@ def _seed_family(
     return family_id
 
 
+def _seed_terminal_session(db_session, *, family_id: str) -> None:
+    account_id = db_session.execute(
+        text(
+            """
+            SELECT account_id::text
+            FROM trade_families
+            WHERE family_id = CAST(:family_id AS uuid)
+            LIMIT 1
+            """
+        ),
+        {"family_id": family_id},
+    ).scalar()
+
+    db_session.execute(
+        text(
+            """
+            INSERT INTO terminal_sessions (
+              session_id,
+              broker_account_id,
+              terminal_name,
+              terminal_path,
+              data_dir,
+              port,
+              status,
+              started_at,
+              last_heartbeat,
+              meta
+            )
+            VALUES (
+              gen_random_uuid(),
+              CAST(:account_id AS uuid),
+              :terminal_name,
+              '/tmp/mt5',
+              '/tmp/mt5-data',
+              20001,
+              'running',
+              now(),
+              now(),
+              '{}'::jsonb
+            )
+            """
+        ),
+        {"account_id": account_id, "terminal_name": f"guarded-live-{family_id[:8]}"},
+    )
+    db_session.commit()
+
+
 def test_guard_allows_safe_trade_and_executes(db_session):
     family_id = _seed_family(db_session, equity_start="10000", entry="100", sl="90", lots="1.00")
+    _seed_terminal_session(db_session, family_id=family_id)
     adapter = FakeAdapter()
 
     result = execute_family_with_prop_guard(family_id=family_id, adapter=adapter)
