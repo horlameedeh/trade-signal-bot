@@ -317,3 +317,33 @@ def test_guarded_execution_blocks_when_terminal_session_ambiguous(monkeypatch, d
 
     assert adapter.calls == 0
     assert _count_terminal_blocks(db_session, family_id) == 1
+
+
+def test_guarded_execution_blocks_when_terminal_session_stale(monkeypatch, db_session):
+    _allow_pre_execution_guards(monkeypatch)
+    family_id, account_id = _seed_family(db_session)
+
+    db_session.execute(
+        text(
+            """
+            INSERT INTO terminal_sessions (
+              broker_account_id, terminal_name, terminal_path,
+              data_dir, port, status, last_heartbeat, meta
+            )
+            VALUES (
+              CAST(:account_id AS uuid), 'guard-terminal-stale', '/tmp/terminal.exe',
+              '/tmp/data', 9102, 'running', now() - interval '10 minutes', '{}'::jsonb
+            )
+            """
+        ),
+        {"account_id": account_id},
+    )
+    db_session.commit()
+
+    adapter = CountingAdapter()
+
+    with pytest.raises(TerminalSessionRoutingError, match="stale_terminal_session"):
+        execute_family_with_prop_guard(family_id=family_id, adapter=adapter)
+
+    assert adapter.calls == 0
+    assert _count_terminal_blocks(db_session, family_id) == 1

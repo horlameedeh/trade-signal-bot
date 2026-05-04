@@ -59,6 +59,7 @@ def _seed_session(db, *, account_id: str, status: str = "running", name: str | N
               data_dir,
               port,
               status,
+                            last_heartbeat,
               meta
             )
             VALUES (
@@ -69,6 +70,7 @@ def _seed_session(db, *, account_id: str, status: str = "running", name: str | N
               '/tmp/data',
               9001,
               :status,
+                            CASE WHEN :status IN ('starting', 'running') THEN now() ELSE NULL END,
               '{}'::jsonb
             )
             """

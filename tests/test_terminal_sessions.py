@@ -153,11 +153,11 @@ def test_resolve_terminal_session_for_account_returns_running_session() -> None:
             text(
                 """
                 INSERT INTO terminal_sessions (
-                  broker_account_id, terminal_name, terminal_path, data_dir, port, status
+                                    broker_account_id, terminal_name, terminal_path, data_dir, port, status, last_heartbeat
                 )
                 VALUES (
                   CAST(:broker_account_id AS uuid), 'resolve-terminal', '/Applications/MetaTrader 5.app',
-                  '/tmp/resolve-terminal', 8443, 'running'
+                                    '/tmp/resolve-terminal', 8443, 'running', now()
                 )
                 """
             ),
