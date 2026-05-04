@@ -28,3 +28,14 @@ C:\Trading\
 
 C:\trade-signal-bot\
 C:\Tools\nssm\
+
+## Managing Telethon Ingestion
+
+Use the helper script instead of calling an unset `$nssm` variable in PowerShell:
+
+```powershell
+.\windows\manage_ingestion_service.ps1 -Action status
+.\windows\manage_ingestion_service.ps1 -Action start
+```
+
+`start`, `stop`, and `restart` require an elevated PowerShell session. `status` works in a normal shell and also tails the Telethon ingestion logs.
