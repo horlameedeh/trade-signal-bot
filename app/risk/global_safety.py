@@ -187,6 +187,113 @@ def _max_total_lots_for_context(
     return _d(default_value) if default_value is not None else None
 
 
+def _family_account_context(*, family_id: str) -> dict | None:
+    with SessionLocal() as db:
+        row = db.execute(
+            text(
+                """
+                SELECT
+                  ba.account_id::text AS account_id,
+                  ba.broker::text AS broker,
+                  COALESCE(ba.equity_start, 0) AS equity_start,
+                  COALESCE(ba.equity_current, ba.equity_start, 0) AS equity_current
+                FROM trade_families tf
+                JOIN broker_accounts ba ON ba.account_id = tf.account_id
+                WHERE tf.family_id = CAST(:family_id AS uuid)
+                LIMIT 1
+                """
+            ),
+            {"family_id": family_id},
+        ).mappings().first()
+
+    return dict(row) if row else None
+
+
+def _account_realized_loss_today(*, account_id: str) -> Decimal:
+    with SessionLocal() as db:
+        rows = db.execute(
+            text(
+                """
+                SELECT meta->'lifecycle'->>'realized_pnl' AS realized_pnl
+                FROM trade_families
+                WHERE account_id = CAST(:account_id AS uuid)
+                  AND created_at::date = now()::date
+                  AND meta::jsonb ? 'lifecycle'
+                """
+            ),
+            {"account_id": account_id},
+        ).mappings().all()
+
+    total_loss = Decimal("0")
+    for row in rows:
+        pnl = _d(row["realized_pnl"])
+        if pnl < 0:
+            total_loss += abs(pnl)
+
+    return total_loss
+
+
+def _account_loss_limits_for_broker(
+    *, cfg: dict, broker: str
+) -> tuple[Decimal | None, Decimal | None]:
+    broker_limits = (cfg.get("brokers") or {}).get(broker) or {}
+
+    daily_loss_pct = broker_limits.get(
+        "daily_loss_pct", cfg.get("default_daily_loss_pct")
+    )
+    drawdown_pct = broker_limits.get(
+        "drawdown_pct", cfg.get("default_drawdown_pct")
+    )
+
+    return (
+        _d(daily_loss_pct) if daily_loss_pct is not None else None,
+        _d(drawdown_pct) if drawdown_pct is not None else None,
+    )
+
+
+def _account_drawdown(*, account: dict) -> Decimal:
+    equity_start = _d(account["equity_start"])
+    equity_current = _d(account["equity_current"])
+    return max(Decimal("0"), equity_start - equity_current)
+
+
+def _evaluate_account_loss_limits(
+    *, account: dict, cfg: dict, threshold: Decimal
+) -> tuple[list[str], GlobalSafetyDecision]:
+    reasons: list[str] = []
+    decision: GlobalSafetyDecision = "allow"
+
+    equity_start = _d(account["equity_start"])
+    if equity_start <= 0:
+        return reasons, decision
+
+    account_id = str(account["account_id"])
+    broker = str(account["broker"])
+    daily_loss_pct, drawdown_pct = _account_loss_limits_for_broker(cfg=cfg, broker=broker)
+
+    if drawdown_pct is not None:
+        drawdown_limit = equity_start * (drawdown_pct / Decimal("100"))
+        current_drawdown = _account_drawdown(account=account)
+        if current_drawdown >= drawdown_limit:
+            decision = "block"
+            reasons.append("account_drawdown_limit_breached")
+        elif current_drawdown >= drawdown_limit * threshold:
+            decision = "require_approval"
+            reasons.append("near_account_drawdown_limit")
+
+    if daily_loss_pct is not None:
+        daily_loss_limit = equity_start * (daily_loss_pct / Decimal("100"))
+        daily_loss = _account_realized_loss_today(account_id=account_id)
+        if daily_loss >= daily_loss_limit:
+            decision = "block"
+            reasons.append("account_daily_loss_limit_breached")
+        elif decision != "block" and daily_loss >= daily_loss_limit * threshold:
+            decision = "require_approval"
+            reasons.append("near_account_daily_loss_limit")
+
+    return reasons, decision
+
+
 def evaluate_global_safety(
     *,
     family_id: str | None = None,
@@ -294,6 +401,21 @@ def evaluate_global_safety(
                 reasons.append(
                     f"max_total_lots_exceeded:{broker}:{total_lots}>{max_total_lots}"
                 )
+
+    account_limits = cfg.get("account_loss_limits") or {}
+    if family_id and account_limits:
+        account = _family_account_context(family_id=family_id)
+        if account:
+            account_reasons, account_decision = _evaluate_account_loss_limits(
+                account=account,
+                cfg=account_limits,
+                threshold=threshold,
+            )
+            reasons.extend(account_reasons)
+            if account_decision == "block":
+                decision = "block"
+            elif decision != "block" and account_decision == "require_approval":
+                decision = "require_approval"
 
     if not reasons:
         reasons.append("within_global_safety_limits")

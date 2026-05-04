@@ -1,11 +1,9 @@
 # yaml-language-server: $schema=../.vscode/schemas/global_safety.schema.json
 
 enabled: true
-
 kill_switch:
   enabled: false
-  reason: ""
-
+  reason: ''
 limits:
   max_trades_per_day: 10
   max_open_trades: 20
@@ -16,10 +14,8 @@ limits:
     BTCUSD: 500
     BTCUSDT: 500
   global_loss_cutoff: 1000
-
 execution_caps:
-  default_max_total_lots: 2.00
-
+  default_max_total_lots: 2.0
   brokers:
     vantage:
       max_total_lots: 0.04
@@ -28,16 +24,33 @@ execution_caps:
     bullwaves:
       max_total_lots: 0.04
     ftmo:
-      max_total_lots: 2.00
+      max_total_lots: 2.0
     fundednext:
-      max_total_lots: 2.00
-
+      max_total_lots: 2.0
   accounts:
-    "vantage:personal_live:500":
+    vantage:personal_live:500:
       max_total_lots: 0.04
-    "startrader:personal_live:500":
+    startrader:personal_live:500:
       max_total_lots: 0.04
-    "bullwaves:personal_live:500":
+    bullwaves:personal_live:500:
       max_total_lots: 0.04
-
 near_limit_threshold_pct: 80
+account_loss_limits:
+  default_daily_loss_pct: 5.0
+  default_drawdown_pct: 10.0
+  brokers:
+    vantage:
+      daily_loss_pct: 5.0
+      drawdown_pct: 10.0
+    startrader:
+      daily_loss_pct: 5.0
+      drawdown_pct: 10.0
+    bullwaves:
+      daily_loss_pct: 5.0
+      drawdown_pct: 10.0
+    ftmo:
+      daily_loss_pct: 5.0
+      drawdown_pct: 10.0
+    fundednext:
+      daily_loss_pct: 5.0
+      drawdown_pct: 10.0

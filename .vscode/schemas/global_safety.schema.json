@@ -74,6 +74,33 @@
     },
     "near_limit_threshold_pct": {
       "type": "number"
+    },
+    "account_loss_limits": {
+      "type": "object",
+      "properties": {
+        "default_daily_loss_pct": {
+          "type": "number"
+        },
+        "default_drawdown_pct": {
+          "type": "number"
+        },
+        "brokers": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "daily_loss_pct": {
+                "type": "number"
+              },
+              "drawdown_pct": {
+                "type": "number"
+              }
+            },
+            "additionalProperties": true
+          }
+        }
+      },
+      "additionalProperties": true
     }
   },
   "additionalProperties": true

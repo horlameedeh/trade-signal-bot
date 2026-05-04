@@ -202,6 +202,146 @@ def _seed_cap_test_family(db_session, *, label: str, lots: list[str]) -> str:
     return family_id
 
 
+def _seed_account_loss_family(
+        db_session,
+        *,
+        label: str,
+        equity_start: str,
+        equity_current: str,
+        family_state: str = "OPEN",
+        realized_pnl: str | None = None,
+) -> tuple[str, str]:
+        account_id = str(uuid.uuid4())
+        intent_id = str(uuid.uuid4())
+        plan_id = str(uuid.uuid4())
+        family_id = str(uuid.uuid4())
+        source_msg_pk = str(uuid.uuid4())
+        message_id = 1400000 + (uuid.uuid4().int % 99999)
+        dedupe_hash = f"cap-test-{source_msg_pk}"
+
+        db_session.execute(
+                text(
+                        """
+                        INSERT INTO broker_accounts (
+                            account_id, broker, platform, kind, label,
+                            base_currency, equity_start, equity_current,
+                            allowed_providers, is_active
+                        )
+                        VALUES (
+                            CAST(:account_id AS uuid), 'vantage', 'mt5', 'personal_live', :label,
+                            'GBP', :equity_start, :equity_current,
+                            ARRAY[]::provider_code[], true
+                        )
+                        """
+                ),
+                {
+                        "account_id": account_id,
+                        "label": label,
+                        "equity_start": equity_start,
+                        "equity_current": equity_current,
+                },
+        )
+
+        db_session.execute(
+                text(
+                        """
+                        INSERT INTO telegram_chats (chat_id, provider_code)
+                        VALUES (-1001239815745, 'fredtrading')
+                        ON CONFLICT (chat_id) DO UPDATE SET provider_code = 'fredtrading'
+                        """
+                )
+        )
+
+        db_session.execute(
+                text(
+                        """
+                        INSERT INTO telegram_messages (msg_pk, chat_id, message_id, text, raw_json)
+                        VALUES (
+                            CAST(:source_msg_pk AS uuid), -1001239815745, :message_id,
+                            'account loss seed', '{}'::jsonb
+                        )
+                        ON CONFLICT DO NOTHING
+                        """
+                ),
+                {"source_msg_pk": source_msg_pk, "message_id": message_id},
+        )
+
+        db_session.execute(
+                text(
+                        """
+                        INSERT INTO trade_intents (
+                            intent_id, provider, chat_id, source_msg_pk, source_message_id, dedupe_hash,
+                            parse_confidence, symbol_canonical, symbol_raw, side, order_type,
+                            entry_price, sl_price, tp_prices, has_runner, risk_tag,
+                            is_scalp, is_swing, is_unofficial, reenter_tag, instructions, meta
+                        )
+                        VALUES (
+                            CAST(:intent_id AS uuid), 'fredtrading', -1001239815745, CAST(:source_msg_pk AS uuid),
+                            :message_id, :dedupe_hash, 0.95, 'XAUUSD', 'XAUUSD', 'buy', 'market',
+                            100, 90, ARRAY[110]::numeric(18,10)[], false, 'normal',
+                            false, false, false, false, 'account loss test', '{}'::jsonb
+                        )
+                        """
+                ),
+                {
+                        "intent_id": intent_id,
+                        "source_msg_pk": source_msg_pk,
+                        "message_id": message_id,
+                        "dedupe_hash": dedupe_hash,
+                },
+        )
+
+        db_session.execute(
+                text(
+                        """
+                        INSERT INTO trade_plans (
+                            plan_id, intent_id, account_id, policy_outcome, requires_approval, policy_reasons
+                        )
+                        VALUES (
+                            CAST(:plan_id AS uuid), CAST(:intent_id AS uuid), CAST(:account_id AS uuid),
+                            'allow', false, ARRAY['cap-test']::text[]
+                        )
+                        """
+                ),
+                {"plan_id": plan_id, "intent_id": intent_id, "account_id": account_id},
+        )
+
+        meta_sql = "'{}'::jsonb"
+        params = {
+                "family_id": family_id,
+                "intent_id": intent_id,
+                "plan_id": plan_id,
+                "account_id": account_id,
+                "source_msg_pk": source_msg_pk,
+                "family_state": family_state,
+        }
+        if realized_pnl is not None:
+                meta_sql = "jsonb_build_object('lifecycle', jsonb_build_object('realized_pnl', CAST(:realized_pnl AS text)))"
+                params["realized_pnl"] = realized_pnl
+
+        db_session.execute(
+                text(
+                        f"""
+                        INSERT INTO trade_families (
+                            family_id, intent_id, plan_id, provider, account_id, chat_id, source_msg_pk,
+                            symbol_canonical, side, entry_price, sl_price, tp_count,
+                            state, is_stub, management_rules, meta
+                        )
+                        VALUES (
+                            CAST(:family_id AS uuid), CAST(:intent_id AS uuid), CAST(:plan_id AS uuid),
+                            'fredtrading', CAST(:account_id AS uuid), -1001239815745, CAST(:source_msg_pk AS uuid),
+                            'XAUUSD', 'buy', 100, 90, 1,
+                            :family_state, false, '{{}}'::jsonb, {meta_sql}
+                        )
+                        """
+                ),
+                params,
+        )
+
+        db_session.commit()
+        return account_id, family_id
+
+
 def test_kill_switch_blocks(tmp_path):
     cfg = _write_cfg(
         tmp_path,
@@ -283,6 +423,7 @@ near_limit_threshold_pct: 80
         monkeypatch.setattr(global_safety, "_count_open_trades", lambda: 0)
         monkeypatch.setattr(global_safety, "_symbol_open_exposure", lambda _symbol: global_safety.Decimal("0"))
         monkeypatch.setattr(global_safety, "_global_realized_loss", lambda: global_safety.Decimal("0"))
+        monkeypatch.setattr(global_safety, "_family_account_context", lambda *, family_id: None)
         monkeypatch.setattr(
                 global_safety,
                 "_family_execution_cap_context",
@@ -365,3 +506,106 @@ execution_caps:
         result = evaluate_global_safety(family_id=family_id, path=cfg)
 
         assert result.decision == "allow"
+
+
+@pytest.mark.integration
+def test_global_safety_blocks_account_drawdown_limit(db_session, tmp_path):
+        _account_id, family_id = _seed_account_loss_family(
+                db_session,
+                label="cap-test-drawdown",
+                equity_start="500",
+                equity_current="440",
+        )
+
+        cfg = _write_cfg(
+                tmp_path,
+                """
+enabled: true
+kill_switch:
+    enabled: false
+    reason: ""
+limits: {}
+account_loss_limits:
+    default_daily_loss_pct: 5
+    default_drawdown_pct: 10
+    brokers:
+        vantage:
+            daily_loss_pct: 5
+            drawdown_pct: 10
+near_limit_threshold_pct: 80
+""",
+        )
+
+        result = evaluate_global_safety(family_id=family_id, path=cfg)
+
+        assert result.decision == "block"
+        assert any("account_drawdown_limit_breached" in reason for reason in result.reasons)
+
+
+@pytest.mark.integration
+def test_global_safety_blocks_account_daily_loss_from_lifecycle(db_session, tmp_path):
+        account_id, _closed_family_id = _seed_account_loss_family(
+                db_session,
+                label="cap-test-daily-loss",
+                equity_start="500",
+                equity_current="500",
+                family_state="CLOSED",
+                realized_pnl="-30",
+        )
+
+        open_family_id = _seed_account_loss_family(
+                db_session,
+                label="cap-test-daily-loss-open",
+                equity_start="500",
+                equity_current="500",
+        )[1]
+
+        db_session.execute(
+                text(
+                        """
+                        UPDATE trade_families
+                        SET account_id = CAST(:account_id AS uuid)
+                        WHERE family_id = CAST(:family_id AS uuid)
+                        """
+                ),
+                {"account_id": account_id, "family_id": open_family_id},
+        )
+        db_session.execute(
+                text(
+                        """
+                        UPDATE trade_plans
+                        SET account_id = CAST(:account_id AS uuid)
+                        WHERE plan_id = (
+                            SELECT plan_id
+                            FROM trade_families
+                            WHERE family_id = CAST(:family_id AS uuid)
+                        )
+                        """
+                ),
+                {"account_id": account_id, "family_id": open_family_id},
+        )
+        db_session.commit()
+
+        cfg = _write_cfg(
+                tmp_path,
+                """
+enabled: true
+kill_switch:
+    enabled: false
+    reason: ""
+limits: {}
+account_loss_limits:
+    default_daily_loss_pct: 5
+    default_drawdown_pct: 10
+    brokers:
+        vantage:
+            daily_loss_pct: 5
+            drawdown_pct: 10
+near_limit_threshold_pct: 80
+""",
+        )
+
+        result = evaluate_global_safety(family_id=open_family_id, path=cfg)
+
+        assert result.decision == "block"
+        assert any("account_daily_loss_limit_breached" in reason for reason in result.reasons)

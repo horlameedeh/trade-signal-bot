@@ -68,6 +68,7 @@ def _write_global_safety_alert(*, family_id: str, decision: str, reasons: list[s
                   'queued',
                   jsonb_build_object(
                     'source', 'global_safety_guard',
+                                        'guard_type', 'global_safety',
                     'family_id', CAST(:family_id AS text),
                     'decision', CAST(:decision AS text),
                     'reasons', CAST(:reasons AS text[])
@@ -98,6 +99,7 @@ def _write_risk_alert(*, family_id: str, decision: str, reasons: list[str]) -> N
                   'queued',
                   jsonb_build_object(
                     'source', 'prop_risk_guard',
+                                        'guard_type', 'prop_risk',
                     'family_id', CAST(:family_id AS text),
                     'decision', CAST(:decision AS text),
                     'reasons', CAST(:reasons AS jsonb)
