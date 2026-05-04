@@ -1,0 +1,80 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Global Safety Config",
+  "type": "object",
+  "properties": {
+    "enabled": {
+      "type": "boolean"
+    },
+    "kill_switch": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "limits": {
+      "type": "object",
+      "properties": {
+        "max_trades_per_day": {
+          "type": "integer"
+        },
+        "max_open_trades": {
+          "type": "integer"
+        },
+        "max_exposure_per_symbol": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number"
+          }
+        },
+        "global_loss_cutoff": {
+          "type": "number"
+        }
+      },
+      "additionalProperties": true
+    },
+    "execution_caps": {
+      "type": "object",
+      "properties": {
+        "default_max_total_lots": {
+          "type": "number"
+        },
+        "brokers": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "max_total_lots": {
+                "type": "number"
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        "accounts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "max_total_lots": {
+                "type": "number"
+              }
+            },
+            "additionalProperties": true
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "near_limit_threshold_pct": {
+      "type": "number"
+    }
+  },
+  "additionalProperties": true
+}

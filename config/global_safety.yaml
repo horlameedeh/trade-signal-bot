@@ -1,3 +1,5 @@
+# yaml-language-server: $schema=../.vscode/schemas/global_safety.schema.json
+
 enabled: true
 
 kill_switch:
@@ -14,5 +16,28 @@ limits:
     BTCUSD: 500
     BTCUSDT: 500
   global_loss_cutoff: 1000
+
+execution_caps:
+  default_max_total_lots: 2.00
+
+  brokers:
+    vantage:
+      max_total_lots: 0.04
+    startrader:
+      max_total_lots: 0.04
+    bullwaves:
+      max_total_lots: 0.04
+    ftmo:
+      max_total_lots: 2.00
+    fundednext:
+      max_total_lots: 2.00
+
+  accounts:
+    "vantage:personal_live:500":
+      max_total_lots: 0.04
+    "startrader:personal_live:500":
+      max_total_lots: 0.04
+    "bullwaves:personal_live:500":
+      max_total_lots: 0.04
 
 near_limit_threshold_pct: 80

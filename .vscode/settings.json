@@ -1,0 +1,5 @@
+{
+  "yaml.schemas": {
+    ".vscode/schemas/global_safety.schema.json": "config/global_safety.yaml"
+  }
+}

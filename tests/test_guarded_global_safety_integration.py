@@ -250,6 +250,21 @@ def _count_actions(db_session, family_id: str, action: str) -> int:
     ).scalar()
 
 
+def _count_open_trade_families(db_session) -> int:
+    return int(
+        db_session.execute(
+            text(
+                """
+                SELECT COUNT(*)
+                FROM trade_families
+                WHERE state IN ('OPEN', 'PARTIALLY_CLOSED', 'PENDING_UPDATE')
+                """
+            )
+        ).scalar()
+        or 0
+    )
+
+
 def test_guarded_executor_blocks_when_global_kill_switch_enabled(monkeypatch, db_session, tmp_path):
     family_id = _seed_family(db_session)
     adapter = FakeAdapter()
@@ -284,16 +299,17 @@ near_limit_threshold_pct: 80
 def test_guarded_executor_requires_approval_when_global_near_limit(monkeypatch, db_session, tmp_path):
     family_id = _seed_family(db_session)
     adapter = FakeAdapter()
+    current_open_trades = _count_open_trade_families(db_session)
 
     cfg = _write_cfg(
         tmp_path,
-        """
+        f"""
 enabled: true
 kill_switch:
   enabled: false
 limits:
-  max_open_trades: 2
-near_limit_threshold_pct: 50
+  max_open_trades: {current_open_trades + 1}
+near_limit_threshold_pct: 99
 """,
     )
 

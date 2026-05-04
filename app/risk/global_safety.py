@@ -142,6 +142,51 @@ def _global_realized_loss() -> Decimal:
     return total_loss
 
 
+def _family_execution_cap_context(*, family_id: str) -> dict | None:
+    with SessionLocal() as db:
+        row = db.execute(
+            text(
+                """
+                SELECT
+                  ba.broker::text AS broker,
+                  ba.kind::text AS account_type,
+                  COALESCE(ba.equity_start, ba.equity_current, 0) AS account_size,
+                  COALESCE(SUM(tl.lots), 0) AS total_lots
+                FROM trade_families tf
+                JOIN broker_accounts ba ON ba.account_id = tf.account_id
+                JOIN trade_legs tl ON tl.family_id = tf.family_id
+                WHERE tf.family_id = CAST(:family_id AS uuid)
+                GROUP BY ba.broker, ba.kind, ba.equity_start, ba.equity_current
+                LIMIT 1
+                """
+            ),
+            {"family_id": family_id},
+        ).mappings().first()
+
+    return dict(row) if row else None
+
+
+def _max_total_lots_for_context(
+    *, cfg: dict, broker: str, account_type: str, account_size: int
+) -> Decimal | None:
+    caps = cfg.get("execution_caps") or {}
+
+    account_caps = caps.get("accounts") or {}
+    account_key = f"{broker}:{account_type}:{account_size}"
+
+    if account_key in account_caps:
+        value = account_caps[account_key].get("max_total_lots")
+        return _d(value) if value is not None else None
+
+    broker_caps = caps.get("brokers") or {}
+    if broker in broker_caps:
+        value = broker_caps[broker].get("max_total_lots")
+        return _d(value) if value is not None else None
+
+    default_value = caps.get("default_max_total_lots")
+    return _d(default_value) if default_value is not None else None
+
+
 def evaluate_global_safety(
     *,
     family_id: str | None = None,
@@ -228,6 +273,27 @@ def evaluate_global_safety(
         elif decision != "block" and global_loss >= cutoff * threshold:
             decision = "require_approval"
             reasons.append("near_global_loss_cutoff")
+
+    if family_id:
+        cap_ctx = _family_execution_cap_context(family_id=family_id)
+        if cap_ctx:
+            broker = str(cap_ctx["broker"])
+            account_type = str(cap_ctx["account_type"])
+            account_size = int(_d(cap_ctx["account_size"]))
+            total_lots = _d(cap_ctx["total_lots"])
+
+            max_total_lots = _max_total_lots_for_context(
+                cfg=cfg,
+                broker=broker,
+                account_type=account_type,
+                account_size=account_size,
+            )
+
+            if max_total_lots is not None and total_lots > max_total_lots:
+                decision = "block"
+                reasons.append(
+                    f"max_total_lots_exceeded:{broker}:{total_lots}>{max_total_lots}"
+                )
 
     if not reasons:
         reasons.append("within_global_safety_limits")
