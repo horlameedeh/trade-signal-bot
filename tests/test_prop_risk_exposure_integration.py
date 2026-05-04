@@ -16,13 +16,55 @@ from app.risk.exposure import (
 pytestmark = pytest.mark.integration
 
 
+def _cleanup_risk_test_data(db) -> None:
+    db.execute(
+        text(
+            """
+            DELETE FROM trade_legs tl
+            USING trade_families tf, broker_accounts ba
+            WHERE tl.family_id = tf.family_id
+              AND tf.account_id = ba.account_id
+              AND ba.label = 'risk-seed'
+            """
+        )
+    )
+    db.execute(
+        text(
+            """
+            DELETE FROM trade_families tf
+            USING broker_accounts ba
+            WHERE tf.account_id = ba.account_id
+              AND ba.label = 'risk-seed'
+            """
+        )
+    )
+    db.execute(
+        text(
+            """
+            DELETE FROM trade_plans tp
+            USING broker_accounts ba
+            WHERE tp.account_id = ba.account_id
+              AND ba.label = 'risk-seed'
+            """
+        )
+    )
+    db.execute(text("DELETE FROM trade_intents WHERE dedupe_hash LIKE 'risk-%'"))
+    db.execute(text("DELETE FROM telegram_messages WHERE text LIKE 'risk seed%'"))
+    db.execute(text("DELETE FROM broker_accounts WHERE label = 'risk-seed'"))
+    db.commit()
+
+
 @pytest.fixture
 def db_session():
+    with SessionLocal() as db:
+        _cleanup_risk_test_data(db)
     with SessionLocal() as db:
         try:
             yield db
         finally:
             db.rollback()
+    with SessionLocal() as db:
+        _cleanup_risk_test_data(db)
 
 
 def _seed_family(
@@ -44,6 +86,19 @@ def _seed_family(
 
     db_session.execute(
         text("INSERT INTO symbols (canonical, asset_class) VALUES ('XAUUSD', 'metal') ON CONFLICT (canonical) DO NOTHING")
+    )
+
+    db_session.execute(
+        text(
+            """
+            UPDATE broker_accounts
+            SET is_active = false
+            WHERE broker = :broker
+              AND platform = 'mt5'
+              AND is_active = true
+            """
+        ),
+        {"broker": broker},
     )
 
     db_session.execute(

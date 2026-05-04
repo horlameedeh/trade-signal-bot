@@ -220,6 +220,18 @@ def _seed_account_loss_family(
         dedupe_hash = f"cap-test-{source_msg_pk}"
 
         db_session.execute(
+            text(
+                """
+                UPDATE broker_accounts
+                SET is_active = false
+                WHERE broker = 'vantage'
+                  AND platform = 'mt5'
+                  AND is_active = true
+                """
+            )
+        )
+
+        db_session.execute(
                 text(
                         """
                         INSERT INTO broker_accounts (
