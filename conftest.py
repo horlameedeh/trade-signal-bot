@@ -22,6 +22,25 @@ TEST_CREDENTIAL_LABELS = (
 )
 
 
+@pytest.fixture
+def db_session():
+    from app.db.session import SessionLocal
+    from sqlalchemy import text
+
+    with SessionLocal() as db:
+        db.execute(
+            text("DELETE FROM broker_accounts WHERE label LIKE 'unit-%'")
+        )
+        db.commit()
+        try:
+            yield db
+        finally:
+            db.execute(
+                text("DELETE FROM broker_accounts WHERE label LIKE 'unit-%'")
+            )
+            db.commit()
+
+
 @pytest.fixture(autouse=True)
 def _clean_test_broker_credentials():
     """Delete well-known test credential labels before each test to prevent
