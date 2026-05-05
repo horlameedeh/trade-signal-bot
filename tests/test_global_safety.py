@@ -71,7 +71,7 @@ def _seed_cap_test_family(db_session, *, label: str, lots: list[str]) -> str:
     plan_id = str(uuid.uuid4())
     family_id = str(uuid.uuid4())
     source_msg_pk = str(uuid.uuid4())
-    message_id = 1300000 + (uuid.uuid4().int % 99999)
+    message_id = 1_700_000_000 + (uuid.UUID(source_msg_pk).int % 100_000_000)
     dedupe_hash = f"cap-test-{source_msg_pk}"
 
     db_session.execute(
@@ -110,7 +110,6 @@ def _seed_cap_test_family(db_session, *, label: str, lots: list[str]) -> str:
               CAST(:source_msg_pk AS uuid), -1001239815745, :message_id,
               'cap test seed', '{}'::jsonb
             )
-            ON CONFLICT DO NOTHING
             """
         ),
         {"source_msg_pk": source_msg_pk, "message_id": message_id},
@@ -216,7 +215,7 @@ def _seed_account_loss_family(
         plan_id = str(uuid.uuid4())
         family_id = str(uuid.uuid4())
         source_msg_pk = str(uuid.uuid4())
-        message_id = 1400000 + (uuid.uuid4().int % 99999)
+        message_id = 1_700_000_000 + (uuid.UUID(source_msg_pk).int % 100_000_000)
         dedupe_hash = f"cap-test-{source_msg_pk}"
 
         db_session.execute(
@@ -260,7 +259,6 @@ def _seed_account_loss_family(
                             CAST(:source_msg_pk AS uuid), -1001239815745, :message_id,
                             'account loss seed', '{}'::jsonb
                         )
-                        ON CONFLICT DO NOTHING
                         """
                 ),
                 {"source_msg_pk": source_msg_pk, "message_id": message_id},

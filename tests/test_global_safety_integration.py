@@ -79,7 +79,7 @@ def _seed_family(
     plan_id = str(uuid.uuid4())
     family_id = str(uuid.uuid4())
     source_msg_pk = str(uuid.uuid4())
-    message_id = 1100000 + (uuid.uuid4().int % 99999)
+    message_id = 1_700_000_000 + (uuid.UUID(source_msg_pk).int % 100_000_000)
 
     asset_class = "metal" if symbol == "XAUUSD" else "index"
 
@@ -125,7 +125,6 @@ def _seed_family(
             """
             INSERT INTO telegram_messages (msg_pk, chat_id, message_id, text, raw_json)
             VALUES (CAST(:source_msg_pk AS uuid), -1001239815745, :message_id, 'global safety seed', '{}'::jsonb)
-            ON CONFLICT DO NOTHING
             """
         ),
         {"source_msg_pk": source_msg_pk, "message_id": message_id},

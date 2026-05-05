@@ -152,6 +152,7 @@ def _write_terminal_routing_block(*, family_id: str, account_id: str, reason: st
                   'queued',
                   jsonb_build_object(
                     'source', 'terminal_session_guard',
+                                        'guard_type', 'terminal_routing',
                     'family_id', CAST(:family_id AS text),
                     'account_id', CAST(:account_id AS text),
                     'reason', CAST(:reason AS text)

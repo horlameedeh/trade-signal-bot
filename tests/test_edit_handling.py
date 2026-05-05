@@ -24,7 +24,7 @@ def _seed_family_and_update_message(db_session, *, provider: str = "billionaire_
     chat_id = -1003254187278
     source_msg_pk = str(uuid.uuid4())
     intent_id = str(uuid.uuid4())
-    source_message_id = 900000 + (uuid.UUID(source_msg_pk).int % 99999)
+    source_message_id = 1_700_000_000 + (uuid.UUID(source_msg_pk).int % 100_000_000)
     edit_message_id = source_message_id + 1
 
     db_session.execute(

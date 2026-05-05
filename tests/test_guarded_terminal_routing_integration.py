@@ -94,6 +94,9 @@ def _cleanup(db, *, broker: str = "vantage") -> None:
     db.execute(
         text("DELETE FROM broker_accounts WHERE label LIKE 'guard-terminal-%'")
     )
+    db.execute(
+        text("DELETE FROM users WHERE display_name LIKE 'guard-terminal-user-%'")
+    )
     db.commit()
 
 
@@ -123,11 +126,13 @@ def _allow_pre_execution_guards(monkeypatch) -> None:
 
 def _seed_family(db, *, broker: str = "vantage") -> tuple[str, str]:
     account_id = str(uuid.uuid4())
+    user_id = str(uuid.uuid4())
     family_id = str(uuid.uuid4())
     intent_id = str(uuid.uuid4())
     plan_id = str(uuid.uuid4())
     source_msg_pk = str(uuid.uuid4())
-    message_id = 990000 + (uuid.uuid4().int % 99999)
+    message_id = 1_700_000_000 + (uuid.UUID(source_msg_pk).int % 100_000_000)
+    telegram_user_id = 980000 + (uuid.uuid4().int % 99999)
 
     db.execute(
         text(
@@ -142,19 +147,40 @@ def _seed_family(db, *, broker: str = "vantage") -> tuple[str, str]:
     db.execute(
         text(
             """
+            INSERT INTO users (user_id, telegram_user_id, display_name, role, is_active)
+            VALUES (
+              CAST(:user_id AS uuid), :telegram_user_id, :display_name, 'user', true
+            )
+            """
+        ),
+        {
+            "user_id": user_id,
+            "telegram_user_id": telegram_user_id,
+            "display_name": f"guard-terminal-user-{account_id}",
+        },
+    )
+
+    db.execute(
+        text(
+            """
             INSERT INTO broker_accounts (
-              account_id, broker, platform, kind, label,
+              account_id, user_id, broker, platform, kind, label,
               base_currency, equity_start, equity_current,
               allowed_providers, is_active
             )
             VALUES (
-              CAST(:account_id AS uuid), :broker, 'mt5', 'personal_live', :label,
+              CAST(:account_id AS uuid), CAST(:user_id AS uuid), :broker, 'mt5', 'personal_live', :label,
               'GBP', 500, 500,
-                            ARRAY[]::provider_code[], false
+              ARRAY[]::provider_code[], false
             )
             """
         ),
-        {"account_id": account_id, "broker": broker, "label": f"guard-terminal-{account_id}"},
+        {
+            "account_id": account_id,
+            "user_id": user_id,
+            "broker": broker,
+            "label": f"guard-terminal-{account_id}",
+        },
     )
 
     db.execute(
@@ -172,7 +198,6 @@ def _seed_family(db, *, broker: str = "vantage") -> tuple[str, str]:
             """
             INSERT INTO telegram_messages (msg_pk, chat_id, message_id, text, raw_json)
             VALUES (CAST(:source_msg_pk AS uuid), -1001239815745, :message_id, 'guard terminal seed', '{}'::jsonb)
-            ON CONFLICT DO NOTHING
             """
         ),
         {"source_msg_pk": source_msg_pk, "message_id": message_id},
@@ -252,11 +277,13 @@ def _seed_terminal(db, *, account_id: str, status: str = "running", suffix: str 
         text(
             """
             INSERT INTO terminal_sessions (
-              broker_account_id, terminal_name, terminal_path,
+                            broker_account_id, user_id, terminal_name, terminal_path,
               data_dir, port, status, last_heartbeat, meta
             )
             VALUES (
-              CAST(:account_id AS uuid), :name, '/tmp/terminal.exe',
+                            CAST(:account_id AS uuid),
+                            (SELECT user_id FROM broker_accounts WHERE account_id = CAST(:account_id AS uuid)),
+                            :name, '/tmp/terminal.exe',
               '/tmp/data', 9101, :status, now(), '{}'::jsonb
             )
             """
@@ -264,6 +291,12 @@ def _seed_terminal(db, *, account_id: str, status: str = "running", suffix: str 
         {"account_id": account_id, "name": f"guard-terminal-{suffix}", "status": status},
     )
     db.commit()
+
+
+def _seed_family_with_terminal_account(db, *, broker: str = "vantage") -> tuple[str, str]:
+        family_id, account_id = _seed_family(db, broker=broker)
+        _seed_terminal(db, account_id=account_id, suffix="owned")
+        return family_id, account_id
 
 
 def _count_terminal_blocks(db, family_id: str) -> int:
@@ -327,11 +360,13 @@ def test_guarded_execution_blocks_when_terminal_session_stale(monkeypatch, db_se
         text(
             """
             INSERT INTO terminal_sessions (
-              broker_account_id, terminal_name, terminal_path,
+                            broker_account_id, user_id, terminal_name, terminal_path,
               data_dir, port, status, last_heartbeat, meta
             )
             VALUES (
-              CAST(:account_id AS uuid), 'guard-terminal-stale', '/tmp/terminal.exe',
+                            CAST(:account_id AS uuid),
+                            (SELECT user_id FROM broker_accounts WHERE account_id = CAST(:account_id AS uuid)),
+                            'guard-terminal-stale', '/tmp/terminal.exe',
               '/tmp/data', 9102, 'running', now() - interval '10 minutes', '{}'::jsonb
             )
             """
@@ -347,3 +382,39 @@ def test_guarded_execution_blocks_when_terminal_session_stale(monkeypatch, db_se
 
     assert adapter.calls == 0
     assert _count_terminal_blocks(db_session, family_id) == 1
+
+
+def test_guarded_execution_logs_missing_account_owner_block(db_session, monkeypatch):
+    _allow_pre_execution_guards(monkeypatch)
+    family_id, account_id = _seed_family_with_terminal_account(db_session, broker="ftmo")
+    adapter = CountingAdapter()
+
+    db_session.execute(
+        text("UPDATE broker_accounts SET user_id = NULL WHERE account_id = CAST(:account_id AS uuid)"),
+        {"account_id": account_id},
+    )
+    db_session.commit()
+
+    with pytest.raises(TerminalSessionRoutingError, match="missing_account_owner"):
+        execute_family_with_prop_guard(
+            family_id=family_id,
+            adapter=adapter,
+        )
+
+    row = db_session.execute(
+        text(
+            """
+            SELECT payload->>'reason'
+            FROM control_actions
+            WHERE action = 'terminal_routing_block'
+              AND payload->>'family_id' = :family_id
+            ORDER BY created_at DESC
+            LIMIT 1
+            """
+        ),
+        {"family_id": family_id},
+    ).scalar()
+
+    assert adapter.calls == 0
+    assert row is not None
+    assert "missing_account_owner" in row

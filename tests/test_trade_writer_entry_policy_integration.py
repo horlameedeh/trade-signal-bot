@@ -55,7 +55,7 @@ def _seed_account(db_session, *, broker: str, platform: str, equity_start: str) 
 def _seed_intent_plan(db_session, *, provider: str, broker: str, platform: str, equity_start: str, symbol: str, order_type: str = "market", entry_price: str = "4662") -> str:
     chat_id = -1001239815745
     source_msg_pk = str(uuid.uuid4())
-    source_message_id = 920000 + (uuid.UUID(source_msg_pk).int % 99999)
+    source_message_id = 1_700_000_000 + (uuid.UUID(source_msg_pk).int % 100_000_000)
     intent_id = str(uuid.uuid4())
     account_id = _seed_account(db_session, broker=broker, platform=platform, equity_start=equity_start)
 

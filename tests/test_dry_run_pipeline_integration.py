@@ -72,8 +72,8 @@ def _seed_active_route(db_session, *, provider: str = "fredtrading", broker: str
 
 def _seed_message(db_session) -> tuple[int, int]:
     chat_id = -1001239815745
-    message_id = 890000 + (uuid.uuid4().int % 99999)
     msg_pk = str(uuid.uuid4())
+    message_id = 1_700_000_000 + (uuid.UUID(msg_pk).int % 100_000_000)
 
     db_session.execute(
         text(
@@ -152,7 +152,8 @@ def test_dry_run_pipeline_is_idempotent_on_same_message(db_session):
 
 def test_dry_run_pipeline_non_trade_is_noop(db_session):
     chat_id = -1001239815745
-    message_id = 880000 + (uuid.uuid4().int % 99999)
+    msg_pk = str(uuid.uuid4())
+    message_id = 1_700_000_000 + (uuid.UUID(msg_pk).int % 100_000_000)
 
     db_session.execute(
         text(
@@ -169,10 +170,10 @@ def test_dry_run_pipeline_non_trade_is_noop(db_session):
         text(
             """
             INSERT INTO telegram_messages (msg_pk, chat_id, message_id, text, raw_json)
-            VALUES (gen_random_uuid(), :chat_id, :message_id, 'hello info only', '{}'::jsonb)
+            VALUES (CAST(:msg_pk AS uuid), :chat_id, :message_id, 'hello info only', '{}'::jsonb)
             """
         ),
-        {"chat_id": chat_id, "message_id": message_id},
+        {"msg_pk": msg_pk, "chat_id": chat_id, "message_id": message_id},
     )
     db_session.commit()
 

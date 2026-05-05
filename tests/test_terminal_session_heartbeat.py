@@ -24,6 +24,11 @@ def _cleanup_heartbeat_terminal_data() -> None:
                 "DELETE FROM broker_accounts WHERE label LIKE 'heartbeat-test-%'"
             )
         )
+        db.execute(
+            text(
+                "DELETE FROM users WHERE display_name LIKE 'heartbeat-user-%'"
+            )
+        )
         db.commit()
 
 
@@ -36,40 +41,66 @@ def _cleanup_heartbeat_data():
 
 def _seed_account_and_session(*, heartbeat_sql: str) -> str:
     account_id = str(uuid.uuid4())
+    user_id = str(uuid.uuid4())
+    telegram_user_id = int(f"87{uuid.uuid4().int % 10**9:09d}")
 
     with SessionLocal() as db:
         db.execute(
             text(
                 """
+                INSERT INTO users (user_id, telegram_user_id, display_name, role, is_active)
+                VALUES (
+                  CAST(:user_id AS uuid), :telegram_user_id, :display_name, 'user', true
+                )
+                """
+            ),
+            {
+                "user_id": user_id,
+                "telegram_user_id": telegram_user_id,
+                "display_name": f"heartbeat-user-{account_id}",
+            },
+        )
+
+        db.execute(
+            text(
+                """
                 INSERT INTO broker_accounts (
-                  account_id, broker, platform, kind, label,
+                  account_id, user_id, broker, platform, kind, label,
                   base_currency, equity_start, equity_current,
                   allowed_providers, is_active
                 )
                 VALUES (
-                  CAST(:account_id AS uuid), 'vantage', 'mt5', 'personal_live', :label,
+                  CAST(:account_id AS uuid), CAST(:user_id AS uuid), 'vantage', 'mt5', 'personal_live', :label,
                   'GBP', 500, 500,
                   ARRAY[]::provider_code[], false
                 )
                 """
             ),
-            {"account_id": account_id, "label": f"heartbeat-test-{account_id}"},
+            {
+                "account_id": account_id,
+                "user_id": user_id,
+                "label": f"heartbeat-test-{account_id}",
+            },
         )
 
         db.execute(
             text(
                 f"""
                 INSERT INTO terminal_sessions (
-                  broker_account_id, terminal_name, terminal_path,
+                  broker_account_id, user_id, terminal_name, terminal_path,
                   data_dir, port, status, last_heartbeat, meta
                 )
                 VALUES (
-                  CAST(:account_id AS uuid), :terminal_name, '/tmp/terminal.exe',
+                  CAST(:account_id AS uuid), CAST(:user_id AS uuid), :terminal_name, '/tmp/terminal.exe',
                   '/tmp/data', 9201, 'running', {heartbeat_sql}, '{{}}'::jsonb
                 )
                 """
             ),
-            {"account_id": account_id, "terminal_name": f"heartbeat-terminal-{account_id}"},
+            {
+                "account_id": account_id,
+                "user_id": user_id,
+                "terminal_name": f"heartbeat-terminal-{account_id}",
+            },
         )
         db.commit()
 

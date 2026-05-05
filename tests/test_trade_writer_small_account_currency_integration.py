@@ -36,7 +36,7 @@ def test_trade_writer_uses_small_account_currency_size(db_session):
     account_id = str(uuid.uuid4())
     intent_id = str(uuid.uuid4())
     source_msg_pk = str(uuid.uuid4())
-    message_id = 1500000 + (uuid.uuid4().int % 99999)
+    message_id = 1_700_000_000 + (uuid.UUID(source_msg_pk).int % 100_000_000)
 
     db_session.execute(text("""
         INSERT INTO symbols (canonical, asset_class)

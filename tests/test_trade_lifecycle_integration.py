@@ -40,7 +40,7 @@ def _seed_family(db_session, *, side: str = "buy", states: list[str] | None = No
     plan_id = str(uuid.uuid4())
     family_id = str(uuid.uuid4())
     source_msg_pk = str(uuid.uuid4())
-    message_id = 940000 + (uuid.uuid4().int % 99999)
+    message_id = 1_700_000_000 + (uuid.UUID(source_msg_pk).int % 100_000_000)
 
     db_session.execute(
         text("INSERT INTO symbols (canonical, asset_class) VALUES ('XAUUSD', 'metal') ON CONFLICT (canonical) DO NOTHING")
@@ -77,7 +77,6 @@ def _seed_family(db_session, *, side: str = "buy", states: list[str] | None = No
             """
             INSERT INTO telegram_messages (msg_pk, chat_id, message_id, text, raw_json)
             VALUES (CAST(:source_msg_pk AS uuid), -1001239815745, :message_id, 'lifecycle seed', '{}'::jsonb)
-            ON CONFLICT DO NOTHING
             """
         ),
         {"source_msg_pk": source_msg_pk, "message_id": message_id},

@@ -72,6 +72,7 @@ def _cleanup_test_data(db) -> None:
         )
     )
     db.execute(text("DELETE FROM broker_accounts WHERE label LIKE '%-seed'"))
+    db.execute(text("DELETE FROM users WHERE display_name LIKE 'guard-global-user-%'"))
     db.commit()
 
 
@@ -90,11 +91,12 @@ def db_session():
 
 def _seed_family(db_session, *, symbol: str = "XAUUSD", equity_start: str = "10000") -> str:
     account_id = str(uuid.uuid4())
+    user_id = str(uuid.uuid4())
     intent_id = str(uuid.uuid4())
     plan_id = str(uuid.uuid4())
     family_id = str(uuid.uuid4())
     source_msg_pk = str(uuid.uuid4())
-    message_id = 1200000 + (uuid.uuid4().int % 99999)
+    message_id = 1_700_000_000 + (uuid.UUID(source_msg_pk).int % 100_000_000)
 
     db_session.execute(
         text(
@@ -110,17 +112,31 @@ def _seed_family(db_session, *, symbol: str = "XAUUSD", equity_start: str = "100
     db_session.execute(
         text(
             """
+            INSERT INTO users (user_id, telegram_user_id, display_name, role, is_active)
+            VALUES (CAST(:user_id AS uuid), :telegram_user_id, :display_name, 'user', true)
+            """
+        ),
+        {
+            "user_id": user_id,
+            "telegram_user_id": 1_800_000_000 + (uuid.UUID(user_id).int % 100_000_000),
+            "display_name": f"guard-global-user-{account_id}",
+        },
+    )
+
+    db_session.execute(
+        text(
+            """
             INSERT INTO broker_accounts (
-              account_id, broker, platform, kind, label,
+              account_id, user_id, broker, platform, kind, label,
               allowed_providers, equity_start, equity_current, is_active
             )
             VALUES (
-              CAST(:account_id AS uuid), 'ftmo', 'mt5', 'personal_live', 'guard-global-seed',
+              CAST(:account_id AS uuid), CAST(:user_id AS uuid), 'ftmo', 'mt5', 'personal_live', 'guard-global-seed',
                             ARRAY[]::provider_code[], :equity_start, :equity_start, false
             )
             """
         ),
-        {"account_id": account_id, "equity_start": equity_start},
+        {"account_id": account_id, "user_id": user_id, "equity_start": equity_start},
     )
 
     db_session.execute(
@@ -138,7 +154,6 @@ def _seed_family(db_session, *, symbol: str = "XAUUSD", equity_start: str = "100
             """
             INSERT INTO telegram_messages (msg_pk, chat_id, message_id, text, raw_json)
             VALUES (CAST(:source_msg_pk AS uuid), -1001239815745, :message_id, 'guard global seed', '{}'::jsonb)
-            ON CONFLICT DO NOTHING
             """
         ),
         {"source_msg_pk": source_msg_pk, "message_id": message_id},
@@ -284,6 +299,7 @@ def _seed_terminal_session(db_session, *, family_id: str) -> None:
             INSERT INTO terminal_sessions (
               session_id,
               broker_account_id,
+              user_id,
               terminal_name,
               terminal_path,
               data_dir,
@@ -296,6 +312,7 @@ def _seed_terminal_session(db_session, *, family_id: str) -> None:
             VALUES (
               gen_random_uuid(),
               CAST(:account_id AS uuid),
+              (SELECT user_id FROM broker_accounts WHERE account_id = CAST(:account_id AS uuid)),
               :terminal_name,
               '/tmp/mt5',
               '/tmp/mt5-data',

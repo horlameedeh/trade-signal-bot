@@ -13,22 +13,41 @@ from app.execution.terminal_sessions import (
 
 
 def _insert_terminal_test_account(*, db, account_id: str, label: str) -> None:
+    user_id = str(uuid.uuid4())
+    telegram_user_id = int(f"88{uuid.uuid4().int % 10**9:09d}")
+
+    db.execute(
+        text(
+            """
+            INSERT INTO users (user_id, telegram_user_id, display_name, role, is_active)
+            VALUES (
+              CAST(:user_id AS uuid), :telegram_user_id, :display_name, 'user', true
+            )
+            """
+        ),
+        {
+            "user_id": user_id,
+            "telegram_user_id": telegram_user_id,
+            "display_name": f"terminal-test-{account_id}",
+        },
+    )
+
     db.execute(
         text(
             """
             INSERT INTO broker_accounts (
-              account_id, broker, platform, kind, label,
+              account_id, user_id, broker, platform, kind, label,
               base_currency, equity_start, equity_current,
               allowed_providers, is_active
             )
             VALUES (
-              CAST(:account_id AS uuid), 'vantage', 'mt4', 'personal_live', :label,
+              CAST(:account_id AS uuid), CAST(:user_id AS uuid), 'vantage', 'mt4', 'personal_live', :label,
               'GBP', 500, 500,
               ARRAY[]::provider_code[], false
             )
             """
         ),
-        {"account_id": account_id, "label": label},
+        {"account_id": account_id, "user_id": user_id, "label": label},
     )
 
 
@@ -153,10 +172,12 @@ def test_resolve_terminal_session_for_account_returns_running_session() -> None:
             text(
                 """
                 INSERT INTO terminal_sessions (
-                                    broker_account_id, terminal_name, terminal_path, data_dir, port, status, last_heartbeat
+                                                                        broker_account_id, user_id, terminal_name, terminal_path, data_dir, port, status, last_heartbeat
                 )
                 VALUES (
-                  CAST(:broker_account_id AS uuid), 'resolve-terminal', '/Applications/MetaTrader 5.app',
+                                    CAST(:broker_account_id AS uuid), (
+                                        SELECT user_id FROM broker_accounts WHERE account_id = CAST(:broker_account_id AS uuid)
+                                    ), 'resolve-terminal', '/Applications/MetaTrader 5.app',
                                     '/tmp/resolve-terminal', 8443, 'running', now()
                 )
                 """
@@ -183,6 +204,12 @@ def test_resolve_terminal_session_for_account_returns_running_session() -> None:
                     "DELETE FROM broker_accounts WHERE account_id = CAST(:account_id AS uuid)"
                 ),
                 {"account_id": broker_account_id},
+            )
+            db.execute(
+                text(
+                    "DELETE FROM users WHERE display_name = :display_name"
+                ),
+                {"display_name": f"terminal-test-{broker_account_id}"},
             )
             db.commit()
 

@@ -23,7 +23,7 @@ def db_session():
 
 def _seed_family(db_session, *, source_msg_pk: str):
     chat_id = -1001239815745
-    source_message_id = 900000 + (uuid.UUID(source_msg_pk).int % 99999)
+    source_message_id = 1_700_000_000 + (uuid.UUID(source_msg_pk).int % 100_000_000)
 
     db_session.execute(
         text(

@@ -15,6 +15,8 @@ TerminalSessionStatus = Literal["starting", "running", "stopped", "failed", "clo
 class TerminalSession:
     session_id: str
     broker_account_id: str
+    user_id: str | None
+    broker_account_user_id: str | None
     terminal_name: str
     terminal_path: str | None
     data_dir: str | None
@@ -35,7 +37,7 @@ def _is_stale_heartbeat(value) -> bool:
 
     if isinstance(value, str):
         try:
-            value = datetime.fromisoformat(value.replace('Z', '+00:00'))
+            value = datetime.fromisoformat(value.replace("Z", "+00:00"))
         except ValueError:
             return True
 
@@ -52,18 +54,22 @@ def resolve_terminal_session_for_account(*, broker_account_id: str) -> TerminalS
             text(
                 """
                 SELECT
-                  session_id::text AS session_id,
-                  broker_account_id::text AS broker_account_id,
-                  terminal_name,
-                  terminal_path,
-                  data_dir,
-                  port,
-                                    status,
-                                    last_heartbeat
-                FROM terminal_sessions
-                WHERE broker_account_id = CAST(:broker_account_id AS uuid)
-                  AND status IN ('starting', 'running')
-                ORDER BY started_at DESC, created_at DESC
+                                    ts.session_id::text AS session_id,
+                                    ts.broker_account_id::text AS broker_account_id,
+                                    ts.user_id::text AS terminal_user_id,
+                                    ba.user_id::text AS broker_account_user_id,
+                                    ts.terminal_name,
+                                    ts.terminal_path,
+                                    ts.data_dir,
+                                    ts.port,
+                                    ts.status,
+                                    ts.last_heartbeat
+                                FROM terminal_sessions ts
+                                JOIN broker_accounts ba
+                                    ON ba.account_id = ts.broker_account_id
+                                WHERE ts.broker_account_id = CAST(:broker_account_id AS uuid)
+                                    AND ts.status IN ('starting', 'running')
+                                ORDER BY ts.started_at DESC, ts.created_at DESC
                 """
             ),
             {"broker_account_id": broker_account_id},
@@ -85,9 +91,30 @@ def resolve_terminal_session_for_account(*, broker_account_id: str) -> TerminalS
         raise TerminalSessionRoutingError(
             f"stale_terminal_session:broker_account_id={broker_account_id}:session_id={row['session_id']}"
         )
+
+    broker_account_user_id = row["broker_account_user_id"]
+    terminal_user_id = row["terminal_user_id"]
+
+    if not broker_account_user_id:
+        raise TerminalSessionRoutingError(
+            f"missing_account_owner:broker_account_id={broker_account_id}"
+        )
+
+    if not terminal_user_id:
+        raise TerminalSessionRoutingError(
+            f"missing_terminal_owner:broker_account_id={broker_account_id}:session_id={row['session_id']}"
+        )
+
+    if terminal_user_id != broker_account_user_id:
+        raise TerminalSessionRoutingError(
+            f"terminal_session_user_mismatch:broker_account_id={broker_account_id}:session_id={row['session_id']}"
+        )
+
     return TerminalSession(
         session_id=row["session_id"],
         broker_account_id=row["broker_account_id"],
+        user_id=terminal_user_id,
+        broker_account_user_id=broker_account_user_id,
         terminal_name=row["terminal_name"],
         terminal_path=row["terminal_path"],
         data_dir=row["data_dir"],

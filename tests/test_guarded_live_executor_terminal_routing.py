@@ -153,3 +153,55 @@ def test_execute_family_with_prop_guard_raises_and_records_terminal_routing_bloc
             "missing_terminal_session:broker_account_id=account-1",
         )
     ]
+
+
+def test_execute_family_with_prop_guard_raises_and_records_owner_mismatch(monkeypatch):
+    recorded: dict[str, str] = {}
+
+    monkeypatch.setattr(
+        "app.execution.guarded_live_executor.evaluate_global_safety",
+        lambda *, family_id: _FakeGlobalSafetyResult(),
+    )
+    monkeypatch.setattr(
+        "app.execution.guarded_live_executor.evaluate_family_prop_risk",
+        lambda **kwargs: _FakePropRiskResult(),
+    )
+    monkeypatch.setattr(
+        "app.execution.guarded_live_executor._family_account_id",
+        lambda *, family_id: "account-2",
+    )
+
+    def fake_resolve_terminal_session_for_account(*, broker_account_id: str):
+        raise TerminalSessionRoutingError(
+            f"terminal_session_user_mismatch:broker_account_id={broker_account_id}:session_id=session-1"
+        )
+
+    def fake_write_terminal_routing_block(*, family_id: str, account_id: str, reason: str) -> None:
+        recorded["family_id"] = family_id
+        recorded["account_id"] = account_id
+        recorded["reason"] = reason
+
+    def fail_if_retry_called(*, family_id: str, adapter, policy):
+        raise AssertionError("retry should not run when terminal routing fails")
+
+    monkeypatch.setattr(
+        "app.execution.guarded_live_executor.resolve_terminal_session_for_account",
+        fake_resolve_terminal_session_for_account,
+    )
+    monkeypatch.setattr(
+        "app.execution.guarded_live_executor._write_terminal_routing_block",
+        fake_write_terminal_routing_block,
+    )
+    monkeypatch.setattr(
+        "app.execution.guarded_live_executor.execute_family_live_with_retry",
+        fail_if_retry_called,
+    )
+
+    with pytest.raises(TerminalSessionRoutingError, match="terminal_session_user_mismatch"):
+        execute_family_with_prop_guard(family_id="family-3", adapter=_UnusedAdapter())
+
+    assert recorded == {
+        "family_id": "family-3",
+        "account_id": "account-2",
+        "reason": "terminal_session_user_mismatch:broker_account_id=account-2:session_id=session-1",
+    }

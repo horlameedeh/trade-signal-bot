@@ -40,7 +40,7 @@ def _seed_ticket(db_session) -> str:
     family_id = str(uuid.uuid4())
     leg_id = str(uuid.uuid4())
     source_msg_pk = str(uuid.uuid4())
-    source_message_id = 900000 + (uuid.UUID(source_msg_pk).int % 99999)
+    source_message_id = 1_700_000_000 + (uuid.UUID(source_msg_pk).int % 100_000_000)
 
     # execution_node required by ticket_ops (get_active_execution_node)
     db_session.execute(
@@ -85,7 +85,6 @@ def _seed_ticket(db_session) -> str:
             """
             INSERT INTO telegram_messages (msg_pk, chat_id, message_id, text, raw_json)
             VALUES (CAST(:source_msg_pk AS uuid), -1009999999999, :source_message_id, 'seed', '{}'::jsonb)
-            ON CONFLICT DO NOTHING
             """
         ),
         {"source_msg_pk": source_msg_pk, "source_message_id": source_message_id},
