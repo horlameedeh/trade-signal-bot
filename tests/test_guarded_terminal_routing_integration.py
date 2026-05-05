@@ -86,12 +86,6 @@ def _cleanup(db, *, broker: str = "vantage") -> None:
         )
     )
     db.execute(
-        text(
-            "UPDATE broker_accounts SET is_active = false WHERE broker = :broker AND platform = 'mt5'"
-        ),
-        {"broker": broker},
-    )
-    db.execute(
         text("DELETE FROM broker_accounts WHERE label LIKE 'guard-terminal-%'")
     )
     db.execute(

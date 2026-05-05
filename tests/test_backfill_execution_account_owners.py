@@ -49,7 +49,7 @@ def test_backfill_execution_account_owners_updates_account_and_terminal() -> Non
                     VALUES (
                       CAST(:account_id AS uuid),
                       CAST('ftmo' AS broker_code),
-                      CAST('mt5' AS platform_code),
+                                            CAST('mt4' AS platform_code),
                       CAST('personal_live' AS account_kind),
                       'FTMO - Execution',
                       'USD',
@@ -93,6 +93,8 @@ def test_backfill_execution_account_owners_updates_account_and_terminal() -> Non
                 str(ROOT / "scripts" / "backfill_execution_account_owners.py"),
                 "--brokers",
                 "ftmo",
+                "--platform",
+                "mt4",
                 "--default-telegram-user-id",
                 str(telegram_user_id),
                 "--default-display-name",
