@@ -59,7 +59,7 @@ def _seed_family_leg(db_session) -> tuple[str, str]:
               'reconcile-seed',
               ARRAY[]::provider_code[],
               10000,
-              true
+                            false
             )
             """
         ),

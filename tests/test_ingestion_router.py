@@ -29,7 +29,7 @@ def _seed_active_route(*, provider: str = "fredtrading", broker: str = "ftmo", e
                   :label,
                   ARRAY[]::provider_code[],
                   :equity_start,
-                  true
+                                    false
                 )
                 """
             ),

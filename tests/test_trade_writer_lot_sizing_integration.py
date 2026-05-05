@@ -37,7 +37,7 @@ def _seed_account(db_session, *, broker: str, equity_start: str) -> str:
               :label,
               ARRAY[]::provider_code[],
               :equity_start,
-              true
+                            false
             )
             """
         ),

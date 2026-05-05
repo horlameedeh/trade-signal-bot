@@ -17,9 +17,6 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 
-PYTEST_BASETEMP = Path(tempfile.gettempdir()) / "trade-signal-bot-pytest"
-
-
 TEST_CREDENTIAL_LABELS = (
     "cmd-ftmo-demo",
     "test-ftmo-secure",
@@ -29,7 +26,7 @@ TEST_CREDENTIAL_LABELS = (
 def pytest_configure(config: pytest.Config) -> None:
     if config.option.basetemp:
         return
-    config.option.basetemp = str(PYTEST_BASETEMP)
+    config.option.basetemp = tempfile.mkdtemp(prefix="trade-signal-bot-pytest-")
 
 
 @pytest.fixture

@@ -24,8 +24,8 @@ def _seed_broker_account(db_session, *, broker: str, platform: str = "mt5", kind
     db_session.execute(
         text(
             """
-            INSERT INTO broker_accounts (account_id, broker, platform, kind, label, allowed_providers)
-            VALUES (:account_id, :broker, :platform, :kind, :label, ARRAY[]::provider_code[])
+            INSERT INTO broker_accounts (account_id, broker, platform, kind, label, allowed_providers, is_active)
+            VALUES (:account_id, :broker, :platform, :kind, :label, ARRAY[]::provider_code[], false)
             """
         ),
         {
@@ -56,8 +56,6 @@ def _seed_provider_route(db_session, *, provider_code: str, broker_account_id: s
             """
             INSERT INTO provider_account_routes (provider_code, broker_account_id, is_active)
             VALUES (:provider_code, CAST(:broker_account_id AS uuid), true)
-            ON CONFLICT (provider_code, broker_account_id)
-            DO UPDATE SET is_active=true, updated_at=now()
             """
         ),
         {"provider_code": provider_code, "broker_account_id": broker_account_id},

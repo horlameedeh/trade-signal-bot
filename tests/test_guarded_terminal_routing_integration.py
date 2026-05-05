@@ -150,7 +150,7 @@ def _seed_family(db, *, broker: str = "vantage") -> tuple[str, str]:
             VALUES (
               CAST(:account_id AS uuid), :broker, 'mt5', 'personal_live', :label,
               'GBP', 500, 500,
-              ARRAY[]::provider_code[], true
+                            ARRAY[]::provider_code[], false
             )
             """
         ),

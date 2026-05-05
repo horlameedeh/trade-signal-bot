@@ -45,7 +45,7 @@ def _seed_family_leg_without_ticket(db_session) -> tuple[str, str]:
             )
             VALUES (
               CAST(:account_id AS uuid), 'ftmo', 'mt5', 'personal_live', 'restart-recovery-seed',
-              ARRAY[]::provider_code[], 10000, 10000, true
+                            ARRAY[]::provider_code[], 10000, 10000, false
             )
             """
         ),

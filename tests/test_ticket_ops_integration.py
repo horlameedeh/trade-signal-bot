@@ -10,13 +10,27 @@ from app.execution.ticket_ops import close_legs_live, modify_legs_sl_tp_live
 pytestmark = pytest.mark.integration
 
 
+def _cleanup_ticket_ops_data(db) -> None:
+    db.execute(text("DELETE FROM execution_tickets WHERE family_id IN (SELECT family_id FROM trade_families WHERE account_id IN (SELECT account_id FROM broker_accounts WHERE label = 'seed-ticket-ops'))"))
+    db.execute(text("DELETE FROM trade_legs WHERE family_id IN (SELECT family_id FROM trade_families WHERE account_id IN (SELECT account_id FROM broker_accounts WHERE label = 'seed-ticket-ops'))"))
+    db.execute(text("DELETE FROM trade_families WHERE account_id IN (SELECT account_id FROM broker_accounts WHERE label = 'seed-ticket-ops')"))
+    db.execute(text("DELETE FROM trade_plans WHERE account_id IN (SELECT account_id FROM broker_accounts WHERE label = 'seed-ticket-ops')"))
+    db.execute(text("DELETE FROM trade_intents WHERE dedupe_hash LIKE 'seed-ticket-ops-%'"))
+    db.execute(text("DELETE FROM broker_accounts WHERE label = 'seed-ticket-ops'"))
+    db.execute(text("DELETE FROM execution_nodes WHERE name = 'test-node-stub' AND broker = 'ftmo' AND platform = 'mt5'"))
+    db.commit()
+
+
 @pytest.fixture
 def db_session():
     with SessionLocal() as db:
+        _cleanup_ticket_ops_data(db)
         try:
             yield db
         finally:
             db.rollback()
+    with SessionLocal() as db:
+        _cleanup_ticket_ops_data(db)
 
 
 def _seed_ticket(db_session) -> str:
@@ -49,7 +63,7 @@ def _seed_ticket(db_session) -> str:
             )
             VALUES (
               CAST(:account_id AS uuid), 'ftmo', 'mt5', 'personal_live', 'seed-ticket-ops',
-              ARRAY[]::provider_code[], 10000, true
+                            ARRAY[]::provider_code[], 10000, false
             )
             """
         ),

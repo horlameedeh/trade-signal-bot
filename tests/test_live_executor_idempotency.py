@@ -41,13 +41,26 @@ class FakeAdapter:
         return []
 
 
+def _cleanup_live_executor_data(db) -> None:
+    db.execute(text("DELETE FROM execution_tickets WHERE family_id IN (SELECT family_id FROM trade_families WHERE account_id IN (SELECT account_id FROM broker_accounts WHERE label = 'seed'))"))
+    db.execute(text("DELETE FROM trade_legs WHERE family_id IN (SELECT family_id FROM trade_families WHERE account_id IN (SELECT account_id FROM broker_accounts WHERE label = 'seed'))"))
+    db.execute(text("DELETE FROM trade_families WHERE account_id IN (SELECT account_id FROM broker_accounts WHERE label = 'seed')"))
+    db.execute(text("DELETE FROM trade_plans WHERE account_id IN (SELECT account_id FROM broker_accounts WHERE label = 'seed')"))
+    db.execute(text("DELETE FROM trade_intents WHERE dedupe_hash LIKE 'seed-%'"))
+    db.execute(text("DELETE FROM broker_accounts WHERE label = 'seed'"))
+    db.commit()
+
+
 @pytest.fixture
 def db_session():
     with SessionLocal() as db:
+        _cleanup_live_executor_data(db)
         try:
             yield db
         finally:
             db.rollback()
+    with SessionLocal() as db:
+        _cleanup_live_executor_data(db)
 
 
 def _seed_family_with_legs(db_session) -> str:
@@ -68,8 +81,8 @@ def _seed_family_with_legs(db_session) -> str:
               allowed_providers, equity_start, is_active
             )
             VALUES (
-              CAST(:account_id AS uuid), 'ftmo', 'mt5', 'personal_live', 'seed',
-              ARRAY[]::provider_code[], 10000, true
+                            CAST(:account_id AS uuid), 'ftmo', 'mt5', 'personal_live', 'seed',
+                            ARRAY[]::provider_code[], 10000, false
             )
             """
         ),

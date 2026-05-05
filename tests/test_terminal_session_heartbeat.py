@@ -12,6 +12,28 @@ from app.execution.terminal_sessions import (
 )
 
 
+def _cleanup_heartbeat_terminal_data() -> None:
+    with SessionLocal() as db:
+        db.execute(
+            text(
+                "DELETE FROM terminal_sessions WHERE terminal_name LIKE 'heartbeat-terminal-%'"
+            )
+        )
+        db.execute(
+            text(
+                "DELETE FROM broker_accounts WHERE label LIKE 'heartbeat-test-%'"
+            )
+        )
+        db.commit()
+
+
+@pytest.fixture(autouse=True)
+def _cleanup_heartbeat_data():
+    _cleanup_heartbeat_terminal_data()
+    yield
+    _cleanup_heartbeat_terminal_data()
+
+
 def _seed_account_and_session(*, heartbeat_sql: str) -> str:
     account_id = str(uuid.uuid4())
 

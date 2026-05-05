@@ -13,14 +13,40 @@ pytestmark = pytest.mark.integration
 @pytest.fixture
 def db_session():
     with SessionLocal() as db:
+        db.execute(text("DELETE FROM execution_tickets WHERE broker = 'ftmo' AND platform = 'mt4'"))
+        db.execute(text("DELETE FROM trade_legs WHERE family_id IN (SELECT family_id FROM trade_families WHERE account_id IN (SELECT account_id FROM broker_accounts WHERE label = 'autonomous-exec-seed'))"))
+        db.execute(text("DELETE FROM trade_families WHERE account_id IN (SELECT account_id FROM broker_accounts WHERE label = 'autonomous-exec-seed')"))
+        db.execute(text("DELETE FROM trade_plans WHERE account_id IN (SELECT account_id FROM broker_accounts WHERE label = 'autonomous-exec-seed')"))
+        db.execute(text("DELETE FROM trade_intents WHERE dedupe_hash LIKE 'autonomous-exec-%'"))
+        db.execute(text("DELETE FROM broker_accounts WHERE label = 'autonomous-exec-seed'"))
+        db.commit()
         try:
             yield db
         finally:
             db.rollback()
+            db.execute(text("DELETE FROM execution_tickets WHERE broker = 'ftmo' AND platform = 'mt4'"))
+            db.execute(text("DELETE FROM trade_legs WHERE family_id IN (SELECT family_id FROM trade_families WHERE account_id IN (SELECT account_id FROM broker_accounts WHERE label = 'autonomous-exec-seed'))"))
+            db.execute(text("DELETE FROM trade_families WHERE account_id IN (SELECT account_id FROM broker_accounts WHERE label = 'autonomous-exec-seed')"))
+            db.execute(text("DELETE FROM trade_plans WHERE account_id IN (SELECT account_id FROM broker_accounts WHERE label = 'autonomous-exec-seed')"))
+            db.execute(text("DELETE FROM trade_intents WHERE dedupe_hash LIKE 'autonomous-exec-%'"))
+            db.execute(text("DELETE FROM broker_accounts WHERE label = 'autonomous-exec-seed'"))
+            db.commit()
 
 
 def _seed_family(db_session, *, with_ticket: bool = False) -> str:
-    account_id = str(uuid.uuid4())
+    account_id = db_session.execute(
+        text(
+            """
+            SELECT account_id::text
+            FROM broker_accounts
+            WHERE label = 'autonomous-exec-seed'
+              AND broker = 'ftmo'
+              AND platform = 'mt4'
+              AND is_active = true
+            LIMIT 1
+            """
+        )
+    ).scalar() or str(uuid.uuid4())
     intent_id = str(uuid.uuid4())
     plan_id = str(uuid.uuid4())
     family_id = str(uuid.uuid4())
@@ -29,21 +55,32 @@ def _seed_family(db_session, *, with_ticket: bool = False) -> str:
 
     db_session.execute(text("INSERT INTO symbols (canonical, asset_class) VALUES ('XAUUSD', 'metal') ON CONFLICT (canonical) DO NOTHING"))
 
-    db_session.execute(
+    if not db_session.execute(
         text(
             """
-            INSERT INTO broker_accounts (
-              account_id, broker, platform, kind, label,
-              allowed_providers, equity_start, equity_current, is_active
-            )
-            VALUES (
-              CAST(:account_id AS uuid), 'ftmo', 'mt5', 'personal_live', 'autonomous-exec-seed',
-              ARRAY[]::provider_code[], 10000, 10000, true
-            )
+            SELECT 1
+            FROM broker_accounts
+            WHERE account_id = CAST(:account_id AS uuid)
+            LIMIT 1
             """
         ),
         {"account_id": account_id},
-    )
+    ).scalar():
+        db_session.execute(
+            text(
+                """
+                INSERT INTO broker_accounts (
+                  account_id, broker, platform, kind, label,
+                  allowed_providers, equity_start, equity_current, is_active
+                )
+                VALUES (
+                  CAST(:account_id AS uuid), 'ftmo', 'mt4', 'personal_live', 'autonomous-exec-seed',
+                  ARRAY[]::provider_code[], 10000, 10000, true
+                )
+                """
+            ),
+            {"account_id": account_id},
+        )
 
     db_session.execute(
         text(
@@ -159,7 +196,7 @@ def _seed_family(db_session, *, with_ticket: bool = False) -> str:
                   sl_price, tp_price, lots, status, raw_response
                 )
                 VALUES (
-                  CAST(:leg_id AS uuid), CAST(:family_id AS uuid), 'ftmo', 'mt5', 'XAUUSD', :ticket,
+                                    CAST(:leg_id AS uuid), CAST(:family_id AS uuid), 'ftmo', 'mt4', 'XAUUSD', :ticket,
                   'buy', 'market', 100, 100, 90, 110, 0.01, 'open', '{}'::jsonb
                 )
                 """
@@ -175,7 +212,7 @@ def test_find_executable_families_skips_already_ticketed(db_session):
     executable = _seed_family(db_session, with_ticket=False)
     _seed_family(db_session, with_ticket=True)
 
-    found = find_executable_families(broker="ftmo", platform="mt5", limit=20)
+    found = find_executable_families(broker="ftmo", platform="mt4", limit=20)
 
     assert executable in found
 
@@ -198,7 +235,7 @@ def test_process_autonomous_executions_counts_results(monkeypatch, db_session):
     monkeypatch.setattr("app.services.autonomous_execution.HttpExecutionNode", lambda base_url: object())
     monkeypatch.setattr("app.services.autonomous_execution.execute_family_with_prop_guard", lambda family_id, adapter: FakeGuarded())
 
-    result = process_autonomous_executions(broker="ftmo", platform="mt5", limit=20)
+    result = process_autonomous_executions(broker="ftmo", platform="mt4", limit=20)
 
     assert result.families_seen >= 1
     assert result.attempted >= 1
@@ -220,7 +257,7 @@ def test_process_autonomous_executions_records_blocked(monkeypatch, db_session):
     monkeypatch.setattr("app.services.autonomous_execution.HttpExecutionNode", lambda base_url: object())
     monkeypatch.setattr("app.services.autonomous_execution.execute_family_with_prop_guard", lambda family_id, adapter: FakeGuarded())
 
-    result = process_autonomous_executions(broker="ftmo", platform="mt5", limit=20)
+    result = process_autonomous_executions(broker="ftmo", platform="mt4", limit=20)
 
     assert result.blocked >= 1
 def test_find_executable_families_skips_telethon_dry_run_family(db_session):
@@ -243,6 +280,6 @@ def test_find_executable_families_skips_telethon_dry_run_family(db_session):
     )
     db_session.commit()
 
-    found = find_executable_families(broker="ftmo", platform="mt5", limit=20)
+    found = find_executable_families(broker="ftmo", platform="mt4", limit=20)
 
     assert family_id not in found

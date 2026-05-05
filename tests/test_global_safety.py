@@ -220,18 +220,6 @@ def _seed_account_loss_family(
         dedupe_hash = f"cap-test-{source_msg_pk}"
 
         db_session.execute(
-            text(
-                """
-                UPDATE broker_accounts
-                SET is_active = false
-                WHERE broker = 'vantage'
-                  AND platform = 'mt5'
-                  AND is_active = true
-                """
-            )
-        )
-
-        db_session.execute(
                 text(
                         """
                         INSERT INTO broker_accounts (
@@ -240,9 +228,9 @@ def _seed_account_loss_family(
                             allowed_providers, is_active
                         )
                         VALUES (
-                            CAST(:account_id AS uuid), 'vantage', 'mt5', 'personal_live', :label,
+                            CAST(:account_id AS uuid), 'vantage', 'mt4', 'personal_live', :label,
                             'GBP', :equity_start, :equity_current,
-                            ARRAY[]::provider_code[], true
+                            ARRAY[]::provider_code[], false
                         )
                         """
                 ),

@@ -10,13 +10,27 @@ from app.services.metrics import get_execution_metrics, get_latency_metrics, get
 pytestmark = pytest.mark.integration
 
 
+def _cleanup_metrics_data(db) -> None:
+    db.execute(text("DELETE FROM execution_tickets WHERE family_id IN (SELECT family_id FROM trade_families WHERE account_id IN (SELECT account_id FROM broker_accounts WHERE label = 'metrics-seed'))"))
+    db.execute(text("DELETE FROM control_actions WHERE payload->>'source' = 'metrics-test'"))
+    db.execute(text("DELETE FROM trade_legs WHERE family_id IN (SELECT family_id FROM trade_families WHERE account_id IN (SELECT account_id FROM broker_accounts WHERE label = 'metrics-seed'))"))
+    db.execute(text("DELETE FROM trade_families WHERE account_id IN (SELECT account_id FROM broker_accounts WHERE label = 'metrics-seed')"))
+    db.execute(text("DELETE FROM trade_plans WHERE account_id IN (SELECT account_id FROM broker_accounts WHERE label = 'metrics-seed')"))
+    db.execute(text("DELETE FROM trade_intents WHERE dedupe_hash LIKE 'metrics-%'"))
+    db.execute(text("DELETE FROM broker_accounts WHERE label = 'metrics-seed'"))
+    db.commit()
+
+
 @pytest.fixture
 def db_session():
     with SessionLocal() as db:
+        _cleanup_metrics_data(db)
         try:
             yield db
         finally:
             db.rollback()
+    with SessionLocal() as db:
+        _cleanup_metrics_data(db)
 
 
 def _seed_metrics_family(db_session, *, family_state: str = "CLOSED", leg_states: list[str] | None = None) -> str:
@@ -40,7 +54,7 @@ def _seed_metrics_family(db_session, *, family_state: str = "CLOSED", leg_states
             )
             VALUES (
               CAST(:account_id AS uuid), 'ftmo', 'mt5', 'personal_live', 'metrics-seed',
-              ARRAY[]::provider_code[], 10000, 10000, true
+                            ARRAY[]::provider_code[], 10000, 10000, false
             )
             """
         ),

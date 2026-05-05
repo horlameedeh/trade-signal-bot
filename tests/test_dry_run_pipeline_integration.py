@@ -36,7 +36,7 @@ def _seed_active_route(db_session, *, provider: str = "fredtrading", broker: str
               :label,
               ARRAY[]::provider_code[],
               :equity_start,
-              true
+                            false
             )
             """
         ),
@@ -64,8 +64,6 @@ def _seed_active_route(db_session, *, provider: str = "fredtrading", broker: str
             """
             INSERT INTO provider_account_routes (provider_code, broker_account_id, is_active)
             VALUES (:provider, CAST(:account_id AS uuid), true)
-            ON CONFLICT (provider_code, broker_account_id)
-            DO UPDATE SET is_active = true
             """
         ),
         {"provider": provider, "account_id": account_id},

@@ -1,4 +1,5 @@
 import uuid
+from pathlib import Path
 
 import pytest
 from sqlalchemy import text
@@ -9,6 +10,12 @@ from app.execution.guarded_live_executor import execute_family_with_prop_guard
 
 
 pytestmark = pytest.mark.integration
+
+
+def _write_cfg(tmp_path, content: str) -> Path:
+    path = tmp_path / "guarded_live_global_safety.yaml"
+    path.write_text(content, encoding="utf-8")
+    return path
 
 
 class FakeAdapter:
@@ -38,13 +45,49 @@ class FakeAdapter:
         return []
 
 
+def _cleanup_guarded_live_data(db) -> None:
+    db.execute(text("DELETE FROM control_actions WHERE payload->>'family_id' IN (SELECT family_id::text FROM trade_families WHERE account_id IN (SELECT account_id FROM broker_accounts WHERE label = 'guard-seed'))"))
+    db.execute(text("DELETE FROM execution_tickets WHERE family_id IN (SELECT family_id FROM trade_families WHERE account_id IN (SELECT account_id FROM broker_accounts WHERE label = 'guard-seed'))"))
+    db.execute(text("DELETE FROM terminal_sessions WHERE broker_account_id IN (SELECT account_id FROM broker_accounts WHERE label = 'guard-seed') OR terminal_name LIKE 'guarded-live-%'"))
+    db.execute(text("DELETE FROM trade_legs WHERE family_id IN (SELECT family_id FROM trade_families WHERE account_id IN (SELECT account_id FROM broker_accounts WHERE label = 'guard-seed'))"))
+    db.execute(text("DELETE FROM trade_families WHERE account_id IN (SELECT account_id FROM broker_accounts WHERE label = 'guard-seed')"))
+    db.execute(text("DELETE FROM trade_plans WHERE account_id IN (SELECT account_id FROM broker_accounts WHERE label = 'guard-seed')"))
+    db.execute(text("DELETE FROM trade_intents WHERE dedupe_hash LIKE 'guard-%'"))
+    db.execute(text("DELETE FROM broker_accounts WHERE label = 'guard-seed'"))
+    db.commit()
+
+
 @pytest.fixture
 def db_session():
+    with SessionLocal() as db:
+        _cleanup_guarded_live_data(db)
     with SessionLocal() as db:
         try:
             yield db
         finally:
             db.rollback()
+    with SessionLocal() as db:
+        _cleanup_guarded_live_data(db)
+
+
+@pytest.fixture(autouse=True)
+def _isolated_global_safety(tmp_path, monkeypatch):
+    cfg = _write_cfg(
+        tmp_path,
+        """
+enabled: true
+kill_switch:
+  enabled: false
+limits:
+  max_trades_per_day: 999999
+  max_open_trades: 999999
+  max_exposure_per_symbol:
+    XAUUSD: 999999
+  global_loss_cutoff: 999999
+near_limit_threshold_pct: 99
+""",
+    )
+    monkeypatch.setattr("app.risk.global_safety.DEFAULT_GLOBAL_SAFETY_PATH", cfg)
 
 
 def _seed_family(

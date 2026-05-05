@@ -11,13 +11,25 @@ from app.services.trade_writer import create_trade_family_and_legs
 pytestmark = pytest.mark.integration
 
 
+def _cleanup_small_account_data(db) -> None:
+    db.execute(text("DELETE FROM trade_legs WHERE family_id IN (SELECT family_id FROM trade_families WHERE account_id IN (SELECT account_id FROM broker_accounts WHERE label = 'small-vantage-test'))"))
+    db.execute(text("DELETE FROM trade_families WHERE account_id IN (SELECT account_id FROM broker_accounts WHERE label = 'small-vantage-test')"))
+    db.execute(text("DELETE FROM trade_plans WHERE account_id IN (SELECT account_id FROM broker_accounts WHERE label = 'small-vantage-test')"))
+    db.execute(text("DELETE FROM trade_intents WHERE dedupe_hash LIKE 'small-account-%'"))
+    db.execute(text("DELETE FROM broker_accounts WHERE label = 'small-vantage-test'"))
+    db.commit()
+
+
 @pytest.fixture
 def db_session():
     with SessionLocal() as db:
+        _cleanup_small_account_data(db)
         try:
             yield db
         finally:
             db.rollback()
+    with SessionLocal() as db:
+        _cleanup_small_account_data(db)
 
 
 def test_trade_writer_uses_small_account_currency_size(db_session):
@@ -42,7 +54,7 @@ def test_trade_writer_uses_small_account_currency_size(db_session):
             VALUES (
                             CAST(:account_id AS uuid), 'vantage', 'mt5', 'personal_live', 'small-vantage-test',
               ARRAY[]::provider_code[], 500, 500,
-                            'GBP', true
+                            'GBP', false
             )
         """),
         {"account_id": account_id},

@@ -42,13 +42,27 @@ class FlakyAdapter:
         return []
 
 
+def _cleanup_retry_data(db) -> None:
+    db.execute(text("DELETE FROM execution_tickets WHERE family_id IN (SELECT family_id FROM trade_families WHERE account_id IN (SELECT account_id FROM broker_accounts WHERE label = 'retry-seed'))"))
+    db.execute(text("DELETE FROM control_actions WHERE payload->>'family_id' IN (SELECT family_id::text FROM trade_families WHERE account_id IN (SELECT account_id FROM broker_accounts WHERE label = 'retry-seed'))"))
+    db.execute(text("DELETE FROM trade_legs WHERE family_id IN (SELECT family_id FROM trade_families WHERE account_id IN (SELECT account_id FROM broker_accounts WHERE label = 'retry-seed'))"))
+    db.execute(text("DELETE FROM trade_families WHERE account_id IN (SELECT account_id FROM broker_accounts WHERE label = 'retry-seed')"))
+    db.execute(text("DELETE FROM trade_plans WHERE account_id IN (SELECT account_id FROM broker_accounts WHERE label = 'retry-seed')"))
+    db.execute(text("DELETE FROM trade_intents WHERE dedupe_hash LIKE 'retry-%'"))
+    db.execute(text("DELETE FROM broker_accounts WHERE label = 'retry-seed'"))
+    db.commit()
+
+
 @pytest.fixture
 def db_session():
     with SessionLocal() as db:
+        _cleanup_retry_data(db)
         try:
             yield db
         finally:
             db.rollback()
+    with SessionLocal() as db:
+        _cleanup_retry_data(db)
 
 
 def _seed_family(db_session) -> str:
@@ -72,7 +86,7 @@ def _seed_family(db_session) -> str:
             )
             VALUES (
               CAST(:account_id AS uuid), 'ftmo', 'mt5', 'personal_live', 'retry-seed',
-              ARRAY[]::provider_code[], 10000, 10000, true
+                            ARRAY[]::provider_code[], 10000, 10000, false
             )
             """
         ),

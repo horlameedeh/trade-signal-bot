@@ -32,7 +32,7 @@ def db_session():
             db.commit()
 
 
-def _seed_account(db_session, *, label: str, broker: str = "ftmo", platform: str = "mt5") -> str:
+def _seed_account(db_session, *, label: str, broker: str = "ftmo", platform: str = "mt4") -> str:
     account_id = str(uuid.uuid4())
 
     db_session.execute(
@@ -83,15 +83,15 @@ def test_resolve_active_user_account_is_scoped(db_session):
     alice = get_or_create_user(telegram_user_id=88111, display_name="Alice")
     bob = get_or_create_user(telegram_user_id=88222, display_name="Bob")
 
-    alice_account = _seed_account(db_session, label="tenant-alice", broker="ftmo", platform="mt5")
-    bob_account = _seed_account(db_session, label="tenant-bob", broker="vantage", platform="mt5")
+    alice_account = _seed_account(db_session, label="tenant-alice", broker="ftmo", platform="mt4")
+    bob_account = _seed_account(db_session, label="tenant-bob", broker="vantage", platform="mt4")
 
     assign_account_to_user(account_id=alice_account, user_id=alice.user_id)
     assign_account_to_user(account_id=bob_account, user_id=bob.user_id)
 
-    resolved_alice = resolve_active_user_account(user_id=alice.user_id, broker="ftmo", platform="mt5")
-    resolved_bob = resolve_active_user_account(user_id=bob.user_id, broker="vantage", platform="mt5")
-    unresolved_cross_user = resolve_active_user_account(user_id=bob.user_id, broker="ftmo", platform="mt5")
+    resolved_alice = resolve_active_user_account(user_id=alice.user_id, broker="ftmo", platform="mt4")
+    resolved_bob = resolve_active_user_account(user_id=bob.user_id, broker="vantage", platform="mt4")
+    unresolved_cross_user = resolve_active_user_account(user_id=bob.user_id, broker="ftmo", platform="mt4")
 
     assert resolved_alice is not None
     assert resolved_bob is not None

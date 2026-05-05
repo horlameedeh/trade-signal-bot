@@ -103,7 +103,7 @@ def _seed_family(
             )
             VALUES (
               CAST(:account_id AS uuid), 'ftmo', 'mt5', 'personal_live', 'global-safety-seed',
-              ARRAY[]::provider_code[], 10000, 10000, true
+                            ARRAY[]::provider_code[], 10000, 10000, false
             )
             """
         ),
@@ -278,44 +278,46 @@ near_limit_threshold_pct: 80
 
 
 def test_max_exposure_per_symbol_blocks(db_session, tmp_path):
+    symbol = "XAUUSD_GSI_LIMIT"
     cfg = _write_cfg(
         tmp_path,
-        """
+        f"""
 enabled: true
 kill_switch:
   enabled: false
 limits:
   max_exposure_per_symbol:
-    XAUUSD: 10
+    {symbol}: 10
 near_limit_threshold_pct: 80
 """,
     )
 
-    _seed_family(db_session, symbol="XAUUSD", entry="100", sl="90", lots="1.00")
+    _seed_family(db_session, symbol=symbol, entry="100", sl="90", lots="1.00")
 
-    result = evaluate_global_safety(symbol="XAUUSD", path=cfg)
+    result = evaluate_global_safety(symbol=symbol, path=cfg)
 
     assert result.decision == "block"
     assert "max_exposure_per_symbol_breached" in result.reasons
 
 
 def test_near_symbol_exposure_requires_approval(db_session, tmp_path):
+    symbol = "XAUUSD_GSI_NEAR"
     cfg = _write_cfg(
         tmp_path,
-        """
+        f"""
 enabled: true
 kill_switch:
   enabled: false
 limits:
   max_exposure_per_symbol:
-    XAUUSD: 100
+    {symbol}: 100
 near_limit_threshold_pct: 80
 """,
     )
 
-    _seed_family(db_session, symbol="XAUUSD", entry="100", sl="90", lots="8.00")
+    _seed_family(db_session, symbol=symbol, entry="100", sl="90", lots="8.00")
 
-    result = evaluate_global_safety(symbol="XAUUSD", path=cfg)
+    result = evaluate_global_safety(symbol=symbol, path=cfg)
 
     assert result.decision == "require_approval"
     assert "near_max_exposure_per_symbol" in result.reasons

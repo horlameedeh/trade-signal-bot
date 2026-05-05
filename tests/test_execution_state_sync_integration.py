@@ -59,7 +59,7 @@ def _seed_open_ticket(db_session, *, broker: str = "ftmo", platform: str = "mt5"
             )
             VALUES (
               CAST(:account_id AS uuid), :broker, :platform, 'personal_live', 'sync-seed',
-              ARRAY[]::provider_code[], 10000, 10000, true
+                            ARRAY[]::provider_code[], 10000, 10000, false
             )
             """
         ),

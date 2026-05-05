@@ -10,13 +10,26 @@ from app.services.management_live import apply_live_be_at_tp1
 pytestmark = pytest.mark.integration
 
 
+def _cleanup_live_management_data(db) -> None:
+    db.execute(text("DELETE FROM execution_tickets WHERE family_id IN (SELECT family_id FROM trade_families WHERE account_id IN (SELECT account_id FROM broker_accounts WHERE label = 'mgmt-seed'))"))
+    db.execute(text("DELETE FROM trade_legs WHERE family_id IN (SELECT family_id FROM trade_families WHERE account_id IN (SELECT account_id FROM broker_accounts WHERE label = 'mgmt-seed'))"))
+    db.execute(text("DELETE FROM trade_families WHERE account_id IN (SELECT account_id FROM broker_accounts WHERE label = 'mgmt-seed')"))
+    db.execute(text("DELETE FROM trade_plans WHERE account_id IN (SELECT account_id FROM broker_accounts WHERE label = 'mgmt-seed')"))
+    db.execute(text("DELETE FROM trade_intents WHERE dedupe_hash LIKE 'mgmt-%'"))
+    db.execute(text("DELETE FROM broker_accounts WHERE label = 'mgmt-seed'"))
+    db.commit()
+
+
 @pytest.fixture
 def db_session():
     with SessionLocal() as db:
+        _cleanup_live_management_data(db)
         try:
             yield db
         finally:
             db.rollback()
+    with SessionLocal() as db:
+        _cleanup_live_management_data(db)
 
 
 def _seed_family_with_tickets(db_session, *, tp1_state: str = "TP_HIT") -> tuple[str, list[str]]:
@@ -41,7 +54,7 @@ def _seed_family_with_tickets(db_session, *, tp1_state: str = "TP_HIT") -> tuple
             )
             VALUES (
               CAST(:account_id AS uuid), 'ftmo', 'mt5', 'personal_live', 'mgmt-seed',
-              ARRAY[]::provider_code[], 10000, 10000, true
+                            ARRAY[]::provider_code[], 10000, 10000, false
             )
             """
         ),
