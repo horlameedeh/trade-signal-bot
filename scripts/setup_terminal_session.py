@@ -1,8 +1,14 @@
 from __future__ import annotations
 
 import argparse
+import sys
+from pathlib import Path
 
 from sqlalchemy import text
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from app.db.session import SessionLocal
 
@@ -52,7 +58,12 @@ def main() -> int:
                 text(
                     """
                     UPDATE terminal_sessions
-                    SET terminal_path = :terminal_path,
+                    SET user_id = (
+                            SELECT ba.user_id
+                            FROM broker_accounts ba
+                            WHERE ba.account_id = CAST(:account_id AS uuid)
+                        ),
+                        terminal_path = :terminal_path,
                         data_dir = :data_dir,
                         port = :port,
                         status = :status,
@@ -82,6 +93,7 @@ def main() -> int:
                 """
                                 INSERT INTO terminal_sessions (
                                     broker_account_id,
+                                    user_id,
                                     terminal_name,
                                     terminal_path,
                                     data_dir,
@@ -93,6 +105,11 @@ def main() -> int:
                                 )
                                 VALUES (
                                     CAST(:account_id AS uuid),
+                                    (
+                                        SELECT ba.user_id
+                                        FROM broker_accounts ba
+                                        WHERE ba.account_id = CAST(:account_id AS uuid)
+                                    ),
                                     :terminal_name,
                                     :terminal_path,
                                     :data_dir,

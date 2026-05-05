@@ -26,6 +26,7 @@ def db_session():
             db.commit()
             yield db
         finally:
+            db.rollback()
             db.execute(text("DELETE FROM broker_accounts WHERE label LIKE 'tenant-%'"))
             db.execute(text("DELETE FROM users WHERE telegram_user_id IN (88111, 88222)"))
             db.commit()
@@ -63,7 +64,7 @@ def test_user_accounts_are_isolated(db_session):
     bob = get_or_create_user(telegram_user_id=88222, display_name="Bob")
 
     alice_account = _seed_account(db_session, label="tenant-shared")
-    bob_account = _seed_account(db_session, label="tenant-shared")
+    bob_account = _seed_account(db_session, label="tenant-shared", broker="vantage")
 
     assign_account_to_user(account_id=alice_account, user_id=alice.user_id)
     assign_account_to_user(account_id=bob_account, user_id=bob.user_id)
@@ -83,18 +84,20 @@ def test_resolve_active_user_account_is_scoped(db_session):
     bob = get_or_create_user(telegram_user_id=88222, display_name="Bob")
 
     alice_account = _seed_account(db_session, label="tenant-alice", broker="ftmo", platform="mt5")
-    bob_account = _seed_account(db_session, label="tenant-bob", broker="ftmo", platform="mt5")
+    bob_account = _seed_account(db_session, label="tenant-bob", broker="vantage", platform="mt5")
 
     assign_account_to_user(account_id=alice_account, user_id=alice.user_id)
     assign_account_to_user(account_id=bob_account, user_id=bob.user_id)
 
     resolved_alice = resolve_active_user_account(user_id=alice.user_id, broker="ftmo", platform="mt5")
-    resolved_bob = resolve_active_user_account(user_id=bob.user_id, broker="ftmo", platform="mt5")
+    resolved_bob = resolve_active_user_account(user_id=bob.user_id, broker="vantage", platform="mt5")
+    unresolved_cross_user = resolve_active_user_account(user_id=bob.user_id, broker="ftmo", platform="mt5")
 
     assert resolved_alice is not None
     assert resolved_bob is not None
     assert resolved_alice.account_id == alice_account
     assert resolved_bob.account_id == bob_account
+    assert unresolved_cross_user is None
 
 
 def test_assert_account_belongs_to_user_blocks_cross_user_access(db_session):
