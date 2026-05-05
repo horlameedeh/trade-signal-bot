@@ -1,9 +1,6 @@
-param(
-    [Parameter(ValueFromRemainingArguments = $true)]
-    [string[]]$Args
-)
-
 $ErrorActionPreference = 'Stop'
+
+$forwardedArgs = @($args)
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 
@@ -44,10 +41,32 @@ if (-not $env:DATABASE_URL) {
 
 $psqlUrl = $env:DATABASE_URL -replace '\+psycopg2?', ''
 
+function Invoke-PsqlCommand {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Executable,
+
+        [Parameter(Mandatory = $true)]
+        [string[]]$CommandArgs
+    )
+
+    $output = & $Executable @CommandArgs
+    $exitCode = $LASTEXITCODE
+
+    if ($null -eq $output) {
+        Write-Output ''
+    }
+    else {
+        $output
+    }
+
+    exit $exitCode
+}
+
 $psqlCommand = Get-Command psql -ErrorAction SilentlyContinue
 if ($psqlCommand) {
-    & $psqlCommand.Source $psqlUrl @Args
-    exit $LASTEXITCODE
+    $commandArgs = @($psqlUrl) + $forwardedArgs
+    Invoke-PsqlCommand -Executable $psqlCommand.Source -CommandArgs $commandArgs
 }
 
 ${dockerCommand} = Get-Command docker -ErrorAction SilentlyContinue
@@ -55,5 +74,5 @@ if (-not $dockerCommand) {
     throw 'psql is not installed or not on PATH, and docker is not available for fallback'
 }
 
-& $dockerCommand.Source compose exec -T postgres psql $psqlUrl @Args
-exit $LASTEXITCODE
+$commandArgs = @('compose', 'exec', '-T', 'postgres', 'psql', $psqlUrl) + $forwardedArgs
+Invoke-PsqlCommand -Executable $dockerCommand.Source -CommandArgs $commandArgs
