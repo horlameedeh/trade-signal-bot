@@ -1,0 +1,18 @@
+{
+  "terminals": [
+    {
+      "name": "BrokerA",
+      "path": "C:\\MT5\\BrokerA\\terminal64.exe",
+      "portable": true,
+      "profile": "BrokerA",
+      "config": "C:\\MT5\\BrokerA\\start.ini"
+    },
+    {
+      "name": "BrokerB",
+      "path": "C:\\MT5\\BrokerB\\terminal64.exe",
+      "portable": true,
+      "profile": "BrokerB",
+      "config": "C:\\MT5\\BrokerB\\start.ini"
+    }
+  ]
+}
