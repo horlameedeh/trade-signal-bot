@@ -18,15 +18,38 @@
 - `terminal_sessions.terminal_path`
 - `terminal_sessions.data_dir`
 
-## Script order
+## Audit script order
 
 1. `01_schema_audit.sql`
 2. `02_identity_audit.sql`
 3. `03_windows_broker_inventory_audit.sql`
 4. `04_windows_terminal_session_audit.sql`
+5. `06_windows_terminal_path_standard_gap.sql`
+6. `07_windows_terminal_path_mapping_audit.sql`
+7. `08_user001_claim_dry_run.sql`
 
-## Execution example
+## Mutation script order
 
-```bash
-PGPASSWORD=tradebot_password psql -h localhost -p 5432 -U tradebot -d tradebot -f ops/sql/milestone_28b4/01_schema_audit.sql
+Run only on Windows production DB after snapshot:
+
+1. `05_windows_canonical_freeze.sql`
+
+## Windows execution example
+
+```powershell
+$env:PGPASSWORD = "tradebot_password"
+
+psql -h localhost -p 5432 -U tradebot -d tradebot -f ops/sql/milestone_28b4/01_schema_audit.sql
+psql -h localhost -p 5432 -U tradebot -d tradebot -f ops/sql/milestone_28b4/02_identity_audit.sql
+psql -h localhost -p 5432 -U tradebot -d tradebot -f ops/sql/milestone_28b4/03_windows_broker_inventory_audit.sql
+psql -h localhost -p 5432 -U tradebot -d tradebot -f ops/sql/milestone_28b4/04_windows_terminal_session_audit.sql
+psql -h localhost -p 5432 -U tradebot -d tradebot -f ops/sql/milestone_28b4/07_windows_terminal_path_mapping_audit.sql
+psql -h localhost -p 5432 -U tradebot -d tradebot -f ops/sql/milestone_28b4/08_user001_claim_dry_run.sql
 ```
+
+## Production rule
+
+Do not delete historical duplicate broker rows.
+Do not pre-register dormant terminal sessions.
+Do not mirror broker binaries/data folders to MacBook.
+Run production mutation scripts only after a DB snapshot.
