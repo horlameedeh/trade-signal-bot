@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException
@@ -29,6 +30,9 @@ app = FastAPI(title="TradeBot Windows Execution Node")
 
 _positions: dict[str, OpenPositionModel] = {}
 
+HEALTH_TIMEOUT_SECONDS = float(os.getenv("TRADEBOT_NODE_HEALTH_TIMEOUT_SECONDS", "5"))
+_health_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="mt5-health")
+
 
 def _mt5_backend():
     from app.execution.mt5_backend import Mt5Backend
@@ -36,12 +40,18 @@ def _mt5_backend():
     return Mt5Backend()
 
 
+def _mt5_health_payload() -> dict:
+    backend = _mt5_backend()
+    return backend.health()
+
+
 @app.get("/health", response_model=NodeHealthResponse)
 def health() -> NodeHealthResponse:
     if PLATFORM == "mt5":
+        future = _health_executor.submit(_mt5_health_payload)
+
         try:
-            backend = _mt5_backend()
-            h = backend.health()
+            h = future.result(timeout=HEALTH_TIMEOUT_SECONDS)
             return NodeHealthResponse(
                 ok=bool(h["initialized"]),
                 node_name=NODE_NAME,
@@ -51,8 +61,17 @@ def health() -> NodeHealthResponse:
                 trading_enabled=bool(h["trading_enabled"]),
                 detail=f"account={h.get('account_login')} server={h.get('server')}",
             )
+        except FuturesTimeoutError:
+            return NodeHealthResponse(
+                ok=False,
+                node_name=NODE_NAME,
+                platform="mt5",
+                broker=BROKER,
+                terminal_connected=False,
+                trading_enabled=False,
+                detail=f"MT5 health check timed out after {HEALTH_TIMEOUT_SECONDS:g}s",
+            )
         except Exception as e:
-            import traceback
             return NodeHealthResponse(
                 ok=False,
                 node_name=NODE_NAME,
