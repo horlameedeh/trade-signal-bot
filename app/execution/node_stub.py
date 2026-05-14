@@ -31,6 +31,7 @@ app = FastAPI(title="TradeBot Windows Execution Node")
 _positions: dict[str, OpenPositionModel] = {}
 
 HEALTH_TIMEOUT_SECONDS = float(os.getenv("TRADEBOT_NODE_HEALTH_TIMEOUT_SECONDS", "5"))
+HEALTH_CHECK_MT5 = os.getenv("TRADEBOT_NODE_HEALTH_CHECK_MT5", "false").lower() == "true"
 _health_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="mt5-health")
 
 
@@ -45,42 +46,57 @@ def _mt5_health_payload() -> dict:
     return backend.health()
 
 
+def _mt5_health_response() -> NodeHealthResponse:
+    future = _health_executor.submit(_mt5_health_payload)
+
+    try:
+        h = future.result(timeout=HEALTH_TIMEOUT_SECONDS)
+        return NodeHealthResponse(
+            ok=bool(h["initialized"]),
+            node_name=NODE_NAME,
+            platform="mt5",
+            broker=BROKER,
+            terminal_connected=bool(h["terminal_connected"]),
+            trading_enabled=bool(h["trading_enabled"]),
+            detail=f"account={h.get('account_login')} server={h.get('server')}",
+        )
+    except FuturesTimeoutError:
+        return NodeHealthResponse(
+            ok=False,
+            node_name=NODE_NAME,
+            platform="mt5",
+            broker=BROKER,
+            terminal_connected=False,
+            trading_enabled=False,
+            detail=f"MT5 health check timed out after {HEALTH_TIMEOUT_SECONDS:g}s",
+        )
+    except Exception as e:
+        return NodeHealthResponse(
+            ok=False,
+            node_name=NODE_NAME,
+            platform="mt5",
+            broker=BROKER,
+            terminal_connected=False,
+            trading_enabled=False,
+            detail=f"{type(e).__name__}: {str(e)}",
+        )
+
+
 @app.get("/health", response_model=NodeHealthResponse)
 def health() -> NodeHealthResponse:
     if PLATFORM == "mt5":
-        future = _health_executor.submit(_mt5_health_payload)
+        if HEALTH_CHECK_MT5:
+            return _mt5_health_response()
 
-        try:
-            h = future.result(timeout=HEALTH_TIMEOUT_SECONDS)
-            return NodeHealthResponse(
-                ok=bool(h["initialized"]),
-                node_name=NODE_NAME,
-                platform="mt5",
-                broker=BROKER,
-                terminal_connected=bool(h["terminal_connected"]),
-                trading_enabled=bool(h["trading_enabled"]),
-                detail=f"account={h.get('account_login')} server={h.get('server')}",
-            )
-        except FuturesTimeoutError:
-            return NodeHealthResponse(
-                ok=False,
-                node_name=NODE_NAME,
-                platform="mt5",
-                broker=BROKER,
-                terminal_connected=False,
-                trading_enabled=False,
-                detail=f"MT5 health check timed out after {HEALTH_TIMEOUT_SECONDS:g}s",
-            )
-        except Exception as e:
-            return NodeHealthResponse(
-                ok=False,
-                node_name=NODE_NAME,
-                platform="mt5",
-                broker=BROKER,
-                terminal_connected=False,
-                trading_enabled=False,
-                detail=f"{type(e).__name__}: {str(e)}",
-            )
+        return NodeHealthResponse(
+            ok=True,
+            node_name=NODE_NAME,
+            platform="mt5",
+            broker=BROKER,
+            terminal_connected=False,
+            trading_enabled=False,
+            detail="node service healthy; MT5 bridge check disabled for liveness",
+        )
 
     return NodeHealthResponse(
         ok=True,
@@ -91,6 +107,22 @@ def health() -> NodeHealthResponse:
         trading_enabled=False,
         detail="stub node healthy",
     )
+
+
+@app.get("/mt5-health", response_model=NodeHealthResponse)
+def mt5_health() -> NodeHealthResponse:
+    if PLATFORM != "mt5":
+        return NodeHealthResponse(
+            ok=True,
+            node_name=NODE_NAME,
+            platform="stub",
+            broker=BROKER,
+            terminal_connected=False,
+            trading_enabled=False,
+            detail="stub node healthy",
+        )
+
+    return _mt5_health_response()
 
 
 @app.post("/open-legs", response_model=OpenLegsResponse)
