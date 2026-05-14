@@ -53,6 +53,7 @@ def _load_active_route(db, provider_code: str) -> Optional[str]:
             FROM provider_account_routes
             WHERE provider_code = :provider_code
               AND is_active = true
+            ORDER BY route_priority ASC, updated_at DESC NULLS LAST, id ASC
             LIMIT 1
             """
         ),

@@ -16,6 +16,8 @@ class ProviderRouteView:
     broker_account_id: Optional[str]
     broker_name: Optional[str]
     is_active: bool
+    route_priority: int = 100
+    route_role: str = "primary"
 
 
 class RoutingRepository:
@@ -88,24 +90,41 @@ class RoutingRepository:
         return out
 
     # ---- provider ↔ account route ----
-    def get_active_account_for_provider(self, provider_code: str) -> Optional[dict[str, Any]]:
-        row = (
+    def list_active_accounts_for_provider(self, provider_code: str) -> list[dict[str, Any]]:
+        rows = (
             self.db.execute(
                 text(
                     """
-            SELECT par.provider_code, par.broker_account_id, par.is_active,
-                   ba.broker AS broker_name
+            SELECT
+              par.provider_code,
+              par.broker_account_id,
+              par.is_active,
+              par.route_priority,
+              par.route_role,
+              ba.broker AS broker_name,
+              ba.is_active AS broker_active
             FROM provider_account_routes par
             JOIN broker_accounts ba ON ba.account_id = par.broker_account_id
-            WHERE par.provider_code = :provider_code AND par.is_active = true
+            WHERE par.provider_code = :provider_code
+              AND par.is_active = true
+            ORDER BY par.route_priority ASC, par.updated_at DESC NULLS LAST, par.id ASC
             """
                 ),
                 {"provider_code": provider_code},
             )
             .mappings()
-            .first()
+            .all()
         )
-        return dict(row) if row else None
+        return [dict(row) for row in rows]
+
+    def get_active_account_for_provider(self, provider_code: str) -> Optional[dict[str, Any]]:
+        """Return the first active route by priority.
+
+        Back-compat API for callers that still expect one selected account.
+        Fallback-aware callers should use list_active_accounts_for_provider().
+        """
+        routes = self.list_active_accounts_for_provider(provider_code)
+        return routes[0] if routes else None
 
     def upsert_provider_account_route(self, provider_code: str, broker_account_id: str) -> None:
         """Back-compat helper: activate route for provider.
@@ -137,57 +156,100 @@ class RoutingRepository:
                 f"(got {broker['broker_name']})"
             )
 
-        # History-friendly activation
+        # Back-compat activation keeps old behavior: one active route for provider.
         self.activate_provider_route(provider_code=provider_code, broker_account_id=broker_account_id)
 
     # ---- audit ----
     def activate_provider_route(self, *, provider_code: str, broker_account_id: str) -> None:
-        """Activate a provider→account route deterministically (history-friendly).
+        """Back-compat single-route activation.
 
-        Ensures:
-        - (provider_code, broker_account_id) row exists (insert if missing)
-        - all other routes for provider_code are set inactive
-        - this target route is set active
+        This preserves the old command behavior by deactivating other routes for
+        the provider, then activating the target as priority 100 / primary.
 
-        Requires DB indexes (Path 2):
-        - UNIQUE(provider_code, broker_account_id)
-        - UNIQUE(provider_code) WHERE is_active=true
+        New fallback-aware code should call upsert_provider_fallback_route().
         """
-        # Ensure row exists
-        self.db.execute(
-            text(
-                """
-                INSERT INTO provider_account_routes (provider_code, broker_account_id, is_active)
-                VALUES (:p, CAST(:a AS uuid), false)
-                ON CONFLICT (provider_code, broker_account_id) DO NOTHING;
-                """
-            ),
-            {"p": provider_code, "a": broker_account_id},
+        self.upsert_provider_fallback_route(
+            provider_code=provider_code,
+            broker_account_id=broker_account_id,
+            route_priority=100,
+            route_role="primary",
+            deactivate_other_routes=True,
         )
 
-        # Deactivate all routes for provider
-        self.db.execute(
-            text(
-                """
-                UPDATE provider_account_routes
-                SET is_active=false, updated_at=now()
-                WHERE provider_code = :p;
-                """
-            ),
-            {"p": provider_code},
-        )
+    def upsert_provider_fallback_route(
+        self,
+        *,
+        provider_code: str,
+        broker_account_id: str,
+        route_priority: int,
+        route_role: str,
+        is_active: bool = True,
+        deactivate_other_routes: bool = False,
+    ) -> None:
+        """Create/update one provider route without requiring single-active routing.
 
-        # Activate target route
+        Multiple active routes per provider are allowed when they have distinct
+        route_priority values. Lower priority values are preferred first.
+        """
+        if provider_code not in PROVIDER_CODES:
+            raise ValueError(f"Unknown provider_code: {provider_code}")
+
+        broker = (
+            self.db.execute(
+                text(
+                    "SELECT account_id, broker AS broker_name FROM broker_accounts WHERE account_id = :id"
+                ),
+                {"id": broker_account_id},
+            )
+            .mappings()
+            .first()
+        )
+        if not broker:
+            raise ValueError(f"broker_account_id not found: {broker_account_id}")
+
+        if deactivate_other_routes:
+            self.db.execute(
+                text(
+                    """
+                    UPDATE provider_account_routes
+                    SET is_active=false, updated_at=now()
+                    WHERE provider_code = :p;
+                    """
+                ),
+                {"p": provider_code},
+            )
+
         self.db.execute(
             text(
                 """
-                UPDATE provider_account_routes
-                SET is_active=true, updated_at=now()
-                WHERE provider_code = :p
-                  AND broker_account_id = CAST(:a AS uuid);
+                INSERT INTO provider_account_routes (
+                  provider_code,
+                  broker_account_id,
+                  is_active,
+                  route_priority,
+                  route_role
+                )
+                VALUES (
+                  :p,
+                  CAST(:a AS uuid),
+                  :active,
+                  :priority,
+                  :role
+                )
+                ON CONFLICT (provider_code, broker_account_id) DO UPDATE
+                  SET is_active = EXCLUDED.is_active,
+                      route_priority = EXCLUDED.route_priority,
+                      route_role = EXCLUDED.route_role,
+                      updated_at = now();
                 """
             ),
-            {"p": provider_code, "a": broker_account_id},
+            {
+                "p": provider_code,
+                "a": broker_account_id,
+                "active": is_active,
+                "priority": route_priority,
+                "role": route_role,
+            },
         )
 
     def insert_routing_decision(
@@ -253,10 +315,16 @@ class RoutingRepository:
             self.db.execute(
                 text(
                     """
-            SELECT par.provider_code, par.broker_account_id, par.is_active, ba.broker AS broker_name
+            SELECT
+              par.provider_code,
+              par.broker_account_id,
+              par.is_active,
+              par.route_priority,
+              par.route_role,
+              ba.broker AS broker_name
             FROM provider_account_routes par
             JOIN broker_accounts ba ON ba.account_id = par.broker_account_id
-            ORDER BY par.provider_code
+            ORDER BY par.provider_code, par.route_priority, ba.broker
             """
                 )
             )
@@ -274,6 +342,8 @@ class RoutingRepository:
                     broker_account_id=str(r["broker_account_id"]) if r["broker_account_id"] else None,
                     broker_name=str(r["broker_name"]) if r["broker_name"] else None,
                     is_active=bool(r["is_active"]),
+                    route_priority=int(r["route_priority"]),
+                    route_role=str(r["route_role"]),
                 )
             )
 

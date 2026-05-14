@@ -43,6 +43,8 @@ def build_showrouting_text() -> str:
                     """
                 SELECT
                   par.provider_code,
+                                    par.route_priority,
+                                    par.route_role,
                   par.is_active,
                   ba.account_id::text AS account_id,
                   ba.broker::text AS broker,
@@ -51,7 +53,7 @@ def build_showrouting_text() -> str:
                   ba.label AS label
                 FROM provider_account_routes par
                 JOIN broker_accounts ba ON ba.account_id = par.broker_account_id
-                ORDER BY par.provider_code
+                                ORDER BY par.provider_code, par.route_priority, ba.broker, ba.platform
             """
                 )
             )

@@ -230,9 +230,16 @@ def _ensure_plan_for_intent(*, source_msg_pk: str) -> None:
                   false,
                   ARRAY['dry_run_auto']::text[]
                 FROM trade_intents ti
-                JOIN provider_account_routes par
-                                    ON par.provider_code = CAST(ti.provider AS text)
-                 AND par.is_active = true
+                JOIN LATERAL (
+                    SELECT par_inner.broker_account_id
+                    FROM provider_account_routes par_inner
+                    WHERE par_inner.provider_code = CAST(ti.provider AS text)
+                      AND par_inner.is_active = true
+                    ORDER BY par_inner.route_priority ASC,
+                             par_inner.updated_at DESC NULLS LAST,
+                             par_inner.id ASC
+                    LIMIT 1
+                ) par ON true
                 WHERE ti.source_msg_pk = CAST(:source_msg_pk AS uuid)
                   AND NOT EXISTS (
                     SELECT 1

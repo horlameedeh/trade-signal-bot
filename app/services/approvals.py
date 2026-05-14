@@ -196,7 +196,7 @@ def _ensure_account_id(db, provider_code: str) -> str:
             FROM provider_account_routes
             WHERE provider_code = :provider_code
               AND is_active = true
-            ORDER BY updated_at DESC NULLS LAST, created_at DESC
+            ORDER BY route_priority ASC, updated_at DESC NULLS LAST, created_at DESC
             LIMIT 1
             """
         ),

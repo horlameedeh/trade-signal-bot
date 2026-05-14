@@ -303,7 +303,9 @@ def ingest_and_route_new_message(
                     """
                     SELECT par.broker_account_id::text AS broker_account_id
                     FROM provider_account_routes par
-                    WHERE par.provider_code = :provider_code AND par.is_active = true
+                    WHERE par.provider_code = :provider_code
+                      AND par.is_active = true
+                    ORDER BY par.route_priority ASC, par.updated_at DESC NULLS LAST, par.id ASC
                     LIMIT 1;
                     """
                 ),
